@@ -6,11 +6,19 @@
     {
       "name": "Johan Böhlin"
     },
+    "version": "1.0.1",
+    "license": "MIT",
     "repository":
     {
       "type": "git",
       "url": "https://github.com/Johboh/ConnectionHelper.git"
     },
-    "frameworks": "arduino",
-    "platforms": "espressif"
+    "frameworks": ["espressif8266", "espressif32"],
+    "dependencies": [
+        {
+          "owner": "ayushsharma82",
+          "name": "ElegantOTA",
+          "version": "^2.2.9"
+        }
+      ]
   }
