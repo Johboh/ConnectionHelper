@@ -2,12 +2,12 @@
 #include <OtaHelper.h>
 #include <WiFiHelper.h>
 
-const char user_hostname[] = "my-hostname";
-const char user_wifi_ssid[] = "my-ssid";
-const char user_wifi_password[] = "my-password";
+const char hostname[] = "my-hostname";
+const char wifi_ssid[] = "my-ssid";
+const char wifi_password[] = "my-password";
 
-OtaHelper _ota_helper(user_hostname);
-WiFiHelper _wifi_helper(user_wifi_ssid, user_wifi_password, user_hostname);
+OtaHelper _ota_helper(hostname);
+WiFiHelper _wifi_helper(wifi_ssid, wifi_password, hostname);
 
 void setup() {
   Serial.begin(115200);
