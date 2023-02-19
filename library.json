@@ -1,0 +1,16 @@
+{
+    "name": "ConnectionHelper",
+    "keywords": "esp8266, esp32, ota, wifi",
+    "description": "A small Arduino library for setting up WiFi and OTA (Over The Air)",
+    "authors":
+    {
+      "name": "Johan Böhlin"
+    },
+    "repository":
+    {
+      "type": "git",
+      "url": "https://github.com/Johboh/ConnectionHelper.git"
+    },
+    "frameworks": "arduino",
+    "platforms": "espressif"
+  }
