@@ -1,7 +1,9 @@
-#include <Ardunio.h>
+#include <Arduino.h>
 #include <OtaHelper.h>
 #include <WiFiHelper.h>
 
+// For this example only.
+// Suggest to not store credentials in version controlled files.
 const char hostname[] = "my-hostname";
 const char wifi_ssid[] = "my-ssid";
 const char wifi_password[] = "my-password";
