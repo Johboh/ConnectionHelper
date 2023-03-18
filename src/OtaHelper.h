@@ -5,7 +5,7 @@
 #ifdef ESP32
 #include <WebServer.h>
 #elif ESP8266
-#include <ESP8266Webserver.h>
+#include <ESP8266WebServer.h>
 #else
 #error "Unsupported hardware. Sorry!"
 #endif
