@@ -34,9 +34,11 @@ void loop() {
 ### Example
 See [simple example](examples/Simple/WifiAndOta.ino).
 
-### Supported platforms
+### Functionallity verified on the following platforms and frameworks
 - ESP32 (tested with platform I/O [espressif32@5.3.0](https://github.com/platformio/platform-espressif32) / [arduino-esp32@2.0.6](https://github.com/espressif/arduino-esp32) on ESP32-S2 and ESP32-C3)
 - ESP8266 (tested with platform I/O [espressif8266@4.0.1](https://github.com/platformio/platform-espressif8266) / [ardunio-core@3.0.2](https://github.com/esp8266/Arduino))
+
+Newer version most probably work too, but they have not been verified.
 
 ### Dependencies
 - https://github.com/ayushsharma82/ElegantOTA @^2.2.9
