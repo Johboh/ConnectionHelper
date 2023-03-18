@@ -1,4 +1,6 @@
 # ConnectionHelper
+[![Test](https://github.com/Johboh/ConnectionHelper/actions/workflows/test.yaml/badge.svg)](https://github.com/Johboh/ConnectionHelper/actions/workflows/test.yaml)
+[![GitHub release](https://img.shields.io/github/release/Johboh/ConnectionHelper.svg)](https://github.com/Johboh/ConnectionHelper/releases)
 A small Arduino utility library for setting up WiFi and OTA (Over The Air)
 
 I found myself repeating the WiFI and OTA setup in all my projects so I made a reusable library for it.
