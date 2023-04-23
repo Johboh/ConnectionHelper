@@ -16,7 +16,7 @@ bool WiFiHelper::connect(bool restart_on_failure) {
 #ifdef ESP32
   WiFi.setHostname(_device_hostname); // For ESP32, must call for Wifi.mode()
 #endif
-  WiFi.mode(WIFI_AP_STA);
+  WiFi.mode(WIFI_STA);
 #ifdef ESP8266
   WiFi.setHostname(_device_hostname); // For ESP8266, must call after Wifi.mode()
 #endif
