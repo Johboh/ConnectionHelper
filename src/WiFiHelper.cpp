@@ -45,7 +45,18 @@ void WiFiHelper::handle() {
     if (WiFi.status() != WL_CONNECTED) {
       Serial.println("WiFiHelper: Not connected. Reconnecting to WiFi...");
       WiFi.reconnect();
+    } else {
+      // We are connected.
+      _last_known_connection_at_ms = now;
     }
     _last_wifi_check_timestamp_ms = now;
   }
+
+  if (_restart_after_ms > 0 && _last_known_connection_at_ms > 0 &&
+      now - _last_known_connection_at_ms >= _restart_after_ms) {
+    // No connection for a while and user has requested to restart.
+    ESP.restart();
+  }
 }
+
+void WiFiHelper::restartOnConnectionLossAfter(unsigned long timeout) { _restart_after_ms = timeout; }

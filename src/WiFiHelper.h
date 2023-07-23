@@ -35,10 +35,23 @@ public:
    */
   void handle();
 
+  /**
+   * @brief Set to a non zero time in milliseconds to restart the device if there is no connection for this long.
+   * This is useful in case you have some state machine that doesn't behave nicely during connection loss.
+   * Default is to not restart. Set to zero to disable.
+   * Minimum time will be the polling time for the connection status, currently set to 30000 milliseconds (see
+   * internals.)
+   *
+   * @param timeout non zero timeout in milliseconds.
+   */
+  void restartOnConnectionLossAfter(unsigned long timeout = 0);
+
 private:
   const char *_ssid;
   const char *_password;
   const char *_device_hostname;
+  unsigned long _restart_after_ms = 0;
+  unsigned long _last_known_connection_at_ms = 0;
   unsigned long _last_wifi_check_timestamp_ms = 0;
 };
 
