@@ -8,6 +8,7 @@
 #include <esp_netif.h>
 #include <esp_partition.h>
 #include <functional>
+#include <optional>
 #include <string>
 
 namespace OtaHelperLog {
@@ -16,8 +17,10 @@ const char TAG[] = "OtaHelper";
 
 /**
  * @brief Create a OTA (Over The Air) helper
+ * Does not support AUTH for Ardunio OTA yet (TODO)
  *
- * Supports the espOTA and ArduinoOTA, and upload via HTTP interace at http://<device-ip>:<port-number/update
+ * Supports the esptool and ArduinoOTA (called espota in Platform I/O), and upload via HTTP interace at
+ * http://<device-ip>:<port-number/
  */
 class OtaHelper {
 public:
@@ -41,30 +44,48 @@ public:
   bool start();
   void setup() { start(); }
 
-private: // Flow
-  bool startWebserver();
-
-private: // OTA
+private: // OTA (generic)
   enum class FlashMode {
     FIRMWARE,
     SPIFFS,
   };
 
-  int fillBuffer(httpd_req_t *req, char *buffer, size_t buffer_size);
-  bool writeStreamToPartition(const esp_partition_t *partition, FlashMode flash_mode, httpd_req_t *req);
+  bool
+  writeStreamToPartition(const esp_partition_t *partition, FlashMode flash_mode, size_t content_length,
+                         std::function<int(char *buffer, size_t buffer_size, size_t total_bytes_left)> fill_buffer);
   bool writeBufferToPartition(const esp_partition_t *partition, size_t bytes_written, char *buffer, size_t buffer_size,
                               uint8_t skip);
 
   esp_err_t partitionIsBootable(const esp_partition_t *partition);
   bool checkDataInBlock(const uint8_t *data, size_t len);
 
-private: // Utils
-  bool reportOnError(esp_err_t err, const char *msg);
-  void replaceAll(std::string &s, const std::string &search, const std::string &replace);
+  const esp_partition_t *findPartition(FlashMode flash_mode);
 
-private: // Static callbacks
+private: // OTA via HTTP
+  bool startWebserver();
+  int fillBuffer(httpd_req_t *req, char *buffer, size_t buffer_size);
+
   static esp_err_t httpGetHandler(httpd_req_t *req);
   static esp_err_t httpPostHandler(httpd_req_t *req);
+
+private: // OTA via ArdunioOTA/ESPOTA
+  static void udpServerTask(void *pvParameters);
+
+  struct ArduinoOtaUpdate {
+    FlashMode flash_mode;
+    uint16_t host_port;
+    uint32_t size;
+    std::string md5;
+  };
+
+  std::optional<ArduinoOtaUpdate> parseUdpPacket(char *buffer, size_t buffer_size);
+  bool connectToHostForArduino(ArduinoOtaUpdate &update, char *host_ip);
+
+  int fillBuffer(int socket, char *buffer, size_t buffer_size, size_t total_bytes_left);
+
+private: // Generic utils
+  bool reportOnError(esp_err_t err, const char *msg);
+  void replaceAll(std::string &s, const std::string &search, const std::string &replace);
 
 private:
   uint16_t _port;
