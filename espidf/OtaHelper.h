@@ -45,8 +45,13 @@ private: // Flow
   bool startWebserver();
 
 private: // OTA
+  enum class FlashMode {
+    FIRMWARE,
+    SPIFFS,
+  };
+
   int fillBuffer(httpd_req_t *req, char *buffer, size_t buffer_size);
-  bool writeStreamToPartition(const esp_partition_t *partition, httpd_req_t *req);
+  bool writeStreamToPartition(const esp_partition_t *partition, FlashMode flash_mode, httpd_req_t *req);
   bool writeBufferToPartition(const esp_partition_t *partition, size_t bytes_written, char *buffer, size_t buffer_size,
                               uint8_t skip);
 

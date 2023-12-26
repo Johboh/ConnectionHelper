@@ -15,15 +15,7 @@
 
 OtaHelper::OtaHelper(const char *id, uint16_t port) : _port(port), _id(id) {}
 
-bool OtaHelper::start() {
-  auto *partition = esp_ota_get_next_update_partition(NULL);
-  if (partition == NULL) {
-    ESP_LOGE(OtaHelperLog::TAG, "No OTA partition found");
-    return false;
-  }
-
-  return startWebserver();
-}
+bool OtaHelper::start() { return startWebserver(); }
 
 esp_err_t OtaHelper::httpGetHandler(httpd_req_t *req) {
   OtaHelper *_this = (OtaHelper *)req->user_ctx;
@@ -47,33 +39,46 @@ esp_err_t OtaHelper::httpPostHandler(httpd_req_t *req) {
   httpd_resp_set_status(req, HTTPD_500); // Assume failure, change later on success.
 
   // Firmware or spiffs
-  char flash_mode[255] = {0};
-  esp_err_t err = httpd_req_get_hdr_value_str(req, FLASH_MODE_HDR_KEY, flash_mode, 255);
+  char hdr_value[255] = {0};
+  esp_err_t err = httpd_req_get_hdr_value_str(req, FLASH_MODE_HDR_KEY, hdr_value, 255);
   if (err != ESP_OK) {
     ESP_LOGE(OtaHelperLog::TAG, "Unable to get flash mode (firmware or spiffs): %s", esp_err_to_name(err));
     httpd_resp_send(req, "Unable to get flash mode (firmware or spiffs)", HTTPD_RESP_USE_STRLEN);
     return ESP_FAIL;
   }
 
-  if (strcmp(flash_mode, FLASH_MODE_FIRMWARE_STR) == 0) {
-
-  } else if (strcmp(flash_mode, FLASH_MODE_SPIFFS_STR) == 0) {
-
+  FlashMode flash_mode;
+  if (strcmp(hdr_value, FLASH_MODE_FIRMWARE_STR) == 0) {
+    flash_mode = FlashMode::FIRMWARE;
+  } else if (strcmp(hdr_value, FLASH_MODE_SPIFFS_STR) == 0) {
+    flash_mode = FlashMode::SPIFFS;
   } else {
-    ESP_LOGE(OtaHelperLog::TAG, "Invalid flash mode: %s", flash_mode);
+    ESP_LOGE(OtaHelperLog::TAG, "Invalid flash mode: %s", hdr_value);
     httpd_resp_send(req, "Invalid flash mode", HTTPD_RESP_USE_STRLEN);
     return ESP_FAIL;
   }
 
-  auto *partition = esp_ota_get_next_update_partition(NULL);
-  if (partition == NULL) {
-    ESP_LOGE(OtaHelperLog::TAG, "No OTA partition found");
-    httpd_resp_send(req, "No OTA partition found", HTTPD_RESP_USE_STRLEN);
-    return ESP_FAIL;
+  const esp_partition_t *partition;
+  if (flash_mode == FlashMode::FIRMWARE) {
+    partition = esp_ota_get_next_update_partition(NULL);
+    if (partition == NULL) {
+      ESP_LOGE(OtaHelperLog::TAG, "No firmware OTA partition found");
+      httpd_resp_send(req, "No firmware OTA partition found", HTTPD_RESP_USE_STRLEN);
+      return ESP_FAIL;
+    }
+    ESP_LOGI(OtaHelperLog::TAG, "Firmare OTA started via HTTP with target partition: %s", partition->label);
+  } else if (flash_mode == FlashMode::SPIFFS) {
+    partition = esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, NULL);
+    if (partition == NULL) {
+      ESP_LOGE(OtaHelperLog::TAG, "No SPIIFS partition found");
+      httpd_resp_send(req, "No SPIIFS partition found", HTTPD_RESP_USE_STRLEN);
+      return ESP_FAIL;
+    }
+
+    ESP_LOGI(OtaHelperLog::TAG, "SPIIFS OTA started via HTTP with target partition: %s", partition->label);
   }
 
-  ESP_LOGI(OtaHelperLog::TAG, "OTA started via HTTP with target partition: %s", partition->label);
-  if (!_this->writeStreamToPartition(partition, req)) {
+  if (!_this->writeStreamToPartition(partition, flash_mode, req)) {
     ESP_LOGE(OtaHelperLog::TAG, "Failed to write stream to partition");
     httpd_resp_send(req, "Failed to write stream to partition", HTTPD_RESP_USE_STRLEN);
     return ESP_FAIL;
@@ -103,7 +108,7 @@ int OtaHelper::fillBuffer(httpd_req_t *req, char *buffer, size_t buffer_size) {
   return total_read;
 }
 
-bool OtaHelper::writeStreamToPartition(const esp_partition_t *partition, httpd_req_t *req) {
+bool OtaHelper::writeStreamToPartition(const esp_partition_t *partition, FlashMode flash_mode, httpd_req_t *req) {
   char *buffer = (char *)malloc(SPI_FLASH_SEC_SIZE);
   if (buffer == nullptr) {
     ESP_LOGE(OtaHelperLog::TAG, "Failed to allocate buffer of size %d", SPI_FLASH_SEC_SIZE);
@@ -126,7 +131,7 @@ bool OtaHelper::writeStreamToPartition(const esp_partition_t *partition, httpd_r
     // Special start case
     // Check start if contains the magic byte.
     uint8_t skip = 0;
-    if (bytes_read == 0) {
+    if (bytes_read == 0 && flash_mode == FlashMode::FIRMWARE) {
       if (buffer[0] != ESP_IMAGE_HEADER_MAGIC) {
         ESP_LOGE(OtaHelperLog::TAG, "Start of firwmare does not contain magic byte");
         free(buffer);
@@ -151,22 +156,24 @@ bool OtaHelper::writeStreamToPartition(const esp_partition_t *partition, httpd_r
     if (bytes_filled != SPI_FLASH_SEC_SIZE) {
       ESP_LOGI(OtaHelperLog::TAG, "End of buffer");
 
-      auto r = esp_partition_write(partition, 0, (uint32_t *)skip_buffer, ENCRYPTED_BLOCK_SIZE);
-      if (!reportOnError(r, "Failed to enable partition")) {
-        free(buffer);
-        return false;
-      }
+      if (flash_mode == FlashMode::FIRMWARE) {
+        auto r = esp_partition_write(partition, 0, (uint32_t *)skip_buffer, ENCRYPTED_BLOCK_SIZE);
+        if (!reportOnError(r, "Failed to enable partition")) {
+          free(buffer);
+          return false;
+        }
 
-      r = partitionIsBootable(partition);
-      if (!reportOnError(r, "Partition is not bootable")) {
-        free(buffer);
-        return false;
-      }
+        r = partitionIsBootable(partition);
+        if (!reportOnError(r, "Partition is not bootable")) {
+          free(buffer);
+          return false;
+        }
 
-      r = esp_ota_set_boot_partition(partition);
-      if (!reportOnError(r, "Failed to set partition as bootable")) {
-        free(buffer);
-        return false;
+        r = esp_ota_set_boot_partition(partition);
+        if (!reportOnError(r, "Failed to set partition as bootable")) {
+          free(buffer);
+          return false;
+        }
       }
     }
 
