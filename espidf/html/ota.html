@@ -1,0 +1,81 @@
+<style>
+  .progress {
+    margin: 15px auto;
+    max-width: 500px;
+    height: 30px;
+  }
+  .progress .progress__bar {
+    height: 100%;
+    width: 1%;
+    border-radius: 15px;
+    background: repeating-linear-gradient(
+      135deg,
+      #1ed760,
+      #0ed760 15px,
+      #03d760 15px,
+      #03d760 30px
+    );
+  }
+  .status {
+    font-weight: bold;
+    font-size: 30px;
+  }
+</style>
+<link
+  rel="stylesheet"
+  href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/2.2.1/css/bootstrap.min.css"
+/>
+<div class="well" style="text-align: center">
+  <div class="btn" onclick="file_sel.click();">
+    <i class="icon-upload" style="padding-right: 5px"></i>Upload Firmware
+  </div>
+  <div style="text-align: center">
+    <label>
+      <input type="radio" name="flash_mode" value="program" checked />
+      Program
+    </label>
+    <label>
+      <input type="radio" name="flash_mode" value="spiffs" />
+      spiffs
+    </label>
+  </div>
+  <div class="progress"><div class="progress__bar" id="progress"></div></div>
+  <div class="status" id="status_div"></div>
+</div>
+<input
+  type="file"
+  id="file_sel"
+  onchange="upload_file()"
+  style="display: none"
+/>
+<script>
+  function upload_file() {
+    document.getElementById("status_div").innerHTML = "Upload in progress";
+    let data = document.getElementById("file_sel").files[0];
+    xhr = new XMLHttpRequest();
+    xhr.open("POST", "/", true);
+    xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+    xhr.upload.addEventListener("progress", function (event) {
+      if (event.lengthComputable) {
+        document.getElementById("progress").style.width =
+          (event.loaded / event.total) * 100 + "%";
+      }
+    });
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState === XMLHttpRequest.DONE) {
+        var status = xhr.status;
+        if (status >= 200 && status < 400) {
+          document.getElementById("status_div").innerHTML =
+            "Upload accepted. Device will reboot.";
+          window.setTimeout(function () {
+            location.href = location.origin;
+          }, 7000);
+        } else {
+          document.getElementById("status_div").innerHTML = "Upload rejected!";
+        }
+      }
+    };
+    xhr.send(data);
+    return false;
+  }
+</script>
