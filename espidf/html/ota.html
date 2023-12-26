@@ -31,16 +31,17 @@
   </div>
   <div style="text-align: center">
     <label>
-      <input type="radio" name="flash_mode" value="program" checked />
-      Program
+      <input type="radio" name="flash_mode" value="firmware" checked />
+      Firmware
     </label>
     <label>
       <input type="radio" name="flash_mode" value="spiffs" />
-      spiffs
+      Filesystem (spiffs)
     </label>
   </div>
   <div class="progress"><div class="progress__bar" id="progress"></div></div>
   <div class="status" id="status_div"></div>
+  <div class="device" id="device">$id</div>
 </div>
 <input
   type="file"
@@ -52,9 +53,16 @@
   function upload_file() {
     document.getElementById("status_div").innerHTML = "Upload in progress";
     let data = document.getElementById("file_sel").files[0];
+
+    // Get the selected flash_mode value
+    let flashMode = document.querySelector(
+      'input[name="flash_mode"]:checked'
+    ).value;
+
     xhr = new XMLHttpRequest();
     xhr.open("POST", "/", true);
     xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+    xhr.setRequestHeader("X-Flash-Mode", flashMode);
     xhr.upload.addEventListener("progress", function (event) {
       if (event.lengthComputable) {
         document.getElementById("progress").style.width =

@@ -5,11 +5,15 @@
 #include <spi_flash_mmap.h>
 #endif
 
+#define FLASH_MODE_HDR_KEY "X-Flash-Mode"
+#define FLASH_MODE_FIRMWARE_STR "firmware"
+#define FLASH_MODE_SPIFFS_STR "spiffs"
+
 #define ENCRYPTED_BLOCK_SIZE 16
 #define SPI_SECTORS_PER_BLOCK 16 // usually large erase block is 32k/64k
 #define SPI_FLASH_BLOCK_SIZE (SPI_SECTORS_PER_BLOCK * SPI_FLASH_SEC_SIZE)
 
-OtaHelper::OtaHelper(const char *id, uint16_t port) : _id(id), _port(port) {}
+OtaHelper::OtaHelper(const char *id, uint16_t port) : _port(port), _id(id) {}
 
 bool OtaHelper::start() {
   auto *partition = esp_ota_get_next_update_partition(NULL);
@@ -22,11 +26,19 @@ bool OtaHelper::start() {
 }
 
 esp_err_t OtaHelper::httpGetHandler(httpd_req_t *req) {
+  OtaHelper *_this = (OtaHelper *)req->user_ctx;
+
   httpd_resp_set_status(req, HTTPD_200);
   httpd_resp_set_hdr(req, "Connection", "keep-alive");
   extern const unsigned char html_start[] asm("_binary_ota_html_start");
   extern const unsigned char html_end[] asm("_binary_ota_html_end");
-  httpd_resp_send(req, (const char *)html_start, html_end - html_start);
+  const size_t html_size = (html_end - html_start);
+
+  std::string html;
+  html.assign((char *)html_start, html_size);
+  _this->replaceAll(html, "$id", _this->_id);
+
+  httpd_resp_send(req, html.c_str(), HTTPD_RESP_USE_STRLEN);
   return ESP_OK;
 }
 esp_err_t OtaHelper::httpPostHandler(httpd_req_t *req) {
@@ -34,18 +46,37 @@ esp_err_t OtaHelper::httpPostHandler(httpd_req_t *req) {
 
   httpd_resp_set_status(req, HTTPD_500); // Assume failure, change later on success.
 
+  // Firmware or spiffs
+  char flash_mode[255] = {0};
+  esp_err_t err = httpd_req_get_hdr_value_str(req, FLASH_MODE_HDR_KEY, flash_mode, 255);
+  if (err != ESP_OK) {
+    ESP_LOGE(OtaHelperLog::TAG, "Unable to get flash mode (firmware or spiffs): %s", esp_err_to_name(err));
+    httpd_resp_send(req, "Unable to get flash mode (firmware or spiffs)", HTTPD_RESP_USE_STRLEN);
+    return ESP_FAIL;
+  }
+
+  if (strcmp(flash_mode, FLASH_MODE_FIRMWARE_STR) == 0) {
+
+  } else if (strcmp(flash_mode, FLASH_MODE_SPIFFS_STR) == 0) {
+
+  } else {
+    ESP_LOGE(OtaHelperLog::TAG, "Invalid flash mode: %s", flash_mode);
+    httpd_resp_send(req, "Invalid flash mode", HTTPD_RESP_USE_STRLEN);
+    return ESP_FAIL;
+  }
+
   auto *partition = esp_ota_get_next_update_partition(NULL);
   if (partition == NULL) {
     ESP_LOGE(OtaHelperLog::TAG, "No OTA partition found");
     httpd_resp_send(req, "No OTA partition found", HTTPD_RESP_USE_STRLEN);
-    return ESP_OK;
+    return ESP_FAIL;
   }
 
   ESP_LOGI(OtaHelperLog::TAG, "OTA started via HTTP with target partition: %s", partition->label);
   if (!_this->writeStreamToPartition(partition, req)) {
     ESP_LOGE(OtaHelperLog::TAG, "Failed to write stream to partition");
     httpd_resp_send(req, "Failed to write stream to partition", HTTPD_RESP_USE_STRLEN);
-    return ESP_OK;
+    return ESP_FAIL;
   }
 
   httpd_resp_set_status(req, HTTPD_200);
@@ -250,4 +281,16 @@ bool OtaHelper::reportOnError(esp_err_t err, const char *msg) {
     return false;
   }
   return true;
+}
+
+void OtaHelper::replaceAll(std::string &s, const std::string &search, const std::string &replace) {
+  for (size_t pos = 0;; pos += replace.length()) {
+    // Locate the substring to replace
+    pos = s.find(search, pos);
+    if (pos == std::string::npos)
+      break;
+    // Replace by erasing and inserting
+    s.erase(pos, search.length());
+    s.insert(pos, replace);
+  }
 }

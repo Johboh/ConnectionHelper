@@ -8,6 +8,7 @@
 #include <esp_netif.h>
 #include <esp_partition.h>
 #include <functional>
+#include <string>
 
 namespace OtaHelperLog {
 const char TAG[] = "OtaHelper";
@@ -40,11 +41,10 @@ public:
   bool start();
   void setup() { start(); }
 
-private:
+private: // Flow
   bool startWebserver();
-  bool reportOnError(esp_err_t err, const char *msg);
 
-private:
+private: // OTA
   int fillBuffer(httpd_req_t *req, char *buffer, size_t buffer_size);
   bool writeStreamToPartition(const esp_partition_t *partition, httpd_req_t *req);
   bool writeBufferToPartition(const esp_partition_t *partition, size_t bytes_written, char *buffer, size_t buffer_size,
@@ -53,13 +53,17 @@ private:
   esp_err_t partitionIsBootable(const esp_partition_t *partition);
   bool checkDataInBlock(const uint8_t *data, size_t len);
 
-private:
+private: // Utils
+  bool reportOnError(esp_err_t err, const char *msg);
+  void replaceAll(std::string &s, const std::string &search, const std::string &replace);
+
+private: // Static callbacks
   static esp_err_t httpGetHandler(httpd_req_t *req);
   static esp_err_t httpPostHandler(httpd_req_t *req);
 
 private:
-  const char *_id;
   uint16_t _port;
+  const std::string _id;
 };
 
 #endif // __OTA_HELPER_H__
