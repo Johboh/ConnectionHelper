@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <esp_err.h>
 #include <esp_event.h>
+#include <esp_http_client.h>
 #include <esp_http_server.h>
 #include <esp_netif.h>
 #include <esp_partition.h>
@@ -19,11 +20,25 @@ const char TAG[] = "OtaHelper";
  * @brief Create a OTA (Over The Air) helper
  * Does not support AUTH for Ardunio OTA yet (TODO)
  *
- * Supports the esptool and ArduinoOTA (called espota in Platform I/O), and upload via HTTP interace at
- * http://<device-ip>:<port-number/
+ * Supports upload via:
+ * - ArduinoOTA (called espota in Platform I/O)
+ * - esptool (TODO)
+ * - HTTP web interface via http://<device-ip>:<port-number/
+ * - Via remote HTTP server, invoked by the device itself.
  */
 class OtaHelper {
 public:
+  /**
+   * @brief CRT Bundle Attach for Ardunio or ESP-IDF from MDTLS, to support TLS/HTTPS.
+   *
+   * Include esp_crt_bundle.h and pass the following when using respective framework:
+   * for Arduino: arduino_esp_crt_bundle_attach
+   * for ESP-IDF: esp_crt_bundle_attach
+   *
+   * C style function.
+   */
+  typedef esp_err_t (*CrtBundleAttach)(void *conf);
+
   /**
    * @brief Construct a new Ota Helper.
    *
@@ -33,7 +48,7 @@ public:
    * firmware.
    * @param port the port number to run the HTTP webserver.
    */
-  OtaHelper(const char *id, uint16_t port = 81);
+  OtaHelper(const char *id, uint16_t port = 81, CrtBundleAttach crt_bundle_attach = nullptr);
 
 public:
   /**
@@ -44,12 +59,23 @@ public:
   bool start();
   void setup() { start(); }
 
-private: // OTA (generic)
   enum class FlashMode {
     FIRMWARE,
     SPIFFS,
   };
 
+  /**
+   * @brief Try to update firmware/spiffs from the given URL.
+   * WiFi needs to be established first.
+   *
+   * @param url url to update from. This should be the bin file to update with.
+   * @param flash_mode flash mode to use.
+   * @param md5_hash 32 string character MD5 hash to validate written firmware/spiffs against. Empty to not validate.
+   * @return true if successful (but will also reboot), so only the false case is useful.
+   */
+  bool updateFrom(std::string &url, FlashMode flash_mode, std::string md5_hash = "");
+
+private: // OTA (generic)
   bool
   writeStreamToPartition(const esp_partition_t *partition, FlashMode flash_mode, size_t content_length,
                          std::string &md5hash,
@@ -62,12 +88,18 @@ private: // OTA (generic)
 
   const esp_partition_t *findPartition(FlashMode flash_mode);
 
-private: // OTA via HTTP
+private: // OTA via local HTTP webserver
   bool startWebserver();
   int fillBuffer(httpd_req_t *req, char *buffer, size_t buffer_size);
 
   static esp_err_t httpGetHandler(httpd_req_t *req);
   static esp_err_t httpPostHandler(httpd_req_t *req);
+
+private: // OTA via remote HTTP websever
+  bool downloadAndWriteToPartition(const esp_partition_t *partition, FlashMode flash_mode, std::string &url,
+                                   std::string &md5hash);
+  static esp_err_t httpEventHandler(esp_http_client_event_t *evt);
+  int fillBuffer(esp_http_client_handle_t client, char *buffer, size_t buffer_size);
 
 private: // OTA via ArdunioOTA/ESPOTA
   static void udpServerTask(void *pvParameters);
@@ -91,6 +123,7 @@ private: // Generic utils
 private:
   uint16_t _port;
   const std::string _id;
+  CrtBundleAttach _crt_bundle_attach;
 };
 
 #endif // __OTA_HELPER_H__

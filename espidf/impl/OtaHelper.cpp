@@ -14,17 +14,21 @@
 #define UDP_FLASH_MODE_SPIFFS 100
 #define ESPOTA_SUCCESSFUL "OK"
 
-// HTTP OTA specific
+// HTTP local OTA specific
 #define FLASH_MODE_HDR_KEY "X-Flash-Mode"
 #define FLASH_MODE_FIRMWARE_STR "firmware"
 #define FLASH_MODE_SPIFFS_STR "spiffs"
+
+// HTTP remote OTA specifc
+#define HTTP_REMOTE_TIMEOUT_MS 15000
 
 // generic partition
 #define ENCRYPTED_BLOCK_SIZE 16
 #define SPI_SECTORS_PER_BLOCK 16 // usually large erase block is 32k/64k
 #define SPI_FLASH_BLOCK_SIZE (SPI_SECTORS_PER_BLOCK * SPI_FLASH_SEC_SIZE)
 
-OtaHelper::OtaHelper(const char *id, uint16_t port) : _port(port), _id(id) {}
+OtaHelper::OtaHelper(const char *id, uint16_t port, CrtBundleAttach crt_bundle_attach)
+    : _port(port), _id(id), _crt_bundle_attach(crt_bundle_attach) {}
 
 bool OtaHelper::start() {
 
@@ -101,8 +105,118 @@ esp_err_t OtaHelper::httpPostHandler(httpd_req_t *req) {
   return ESP_OK;
 }
 
+bool OtaHelper::updateFrom(std::string &url, FlashMode flash_mode, std::string md5_hash) {
+  auto *partition = findPartition(flash_mode);
+  if (partition == nullptr) {
+    ESP_LOGE(OtaHelperLog::TAG, "Unable to find partition suitable partition");
+    return ESP_FAIL;
+  }
+
+  if (!md5_hash.empty() && md5_hash.length() != 32) {
+    ESP_LOGE(OtaHelperLog::TAG, "MD5 is not correct length. Expected length: 32, got %zu", md5_hash.length());
+    return false;
+  }
+
+  ESP_LOGI(OtaHelperLog::TAG, "OTA started via remoteHTTP with target partition: %s", partition->label);
+
+  return downloadAndWriteToPartition(partition, flash_mode, url, md5_hash);
+}
+
+esp_err_t OtaHelper::httpEventHandler(esp_http_client_event_t *evt) {
+
+  switch (evt->event_id) {
+  case HTTP_EVENT_ERROR:
+    ESP_LOGE(OtaHelperLog::TAG, "HTTP_EVENT_ERROR");
+    break;
+  case HTTP_EVENT_ON_CONNECTED:
+    ESP_LOGI(OtaHelperLog::TAG, "HTTP_EVENT_ON_CONNECTED");
+    break;
+  case HTTP_EVENT_HEADER_SENT:
+    ESP_LOGV(OtaHelperLog::TAG, "HTTP_EVENT_HEADER_SENT");
+    break;
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 1, 0)
+  case HTTP_EVENT_REDIRECT:
+    ESP_LOGV(OtaHelperLog::TAG, "HTTP_EVENT_REDIRECT");
+    break;
+#endif
+  case HTTP_EVENT_ON_HEADER:
+    ESP_LOGV(OtaHelperLog::TAG, "HTTP_EVENT_ON_HEADER, key=%s, value=%s", evt->header_key, evt->header_value);
+    break;
+  case HTTP_EVENT_ON_DATA:
+    ESP_LOGV(OtaHelperLog::TAG, "HTTP_EVENT_ON_DATA, len=%d", evt->data_len);
+    break;
+  case HTTP_EVENT_ON_FINISH:
+    ESP_LOGI(OtaHelperLog::TAG, "HTTP_EVENT_ON_FINISH");
+    break;
+  case HTTP_EVENT_DISCONNECTED:
+    ESP_LOGI(OtaHelperLog::TAG, "HTTP_EVENT_DISCONNECTED");
+    break;
+  }
+
+  return ESP_OK;
+}
+
+bool OtaHelper::downloadAndWriteToPartition(const esp_partition_t *partition, FlashMode flash_mode, std::string &url,
+                                            std::string &md5hash) {
+
+  char *buffer = (char *)malloc(SPI_FLASH_SEC_SIZE);
+
+  esp_http_client_config_t config = {};
+  config.url = url.c_str();
+  config.user_data = this;
+  config.event_handler = httpEventHandler;
+  config.buffer_size = SPI_FLASH_SEC_SIZE;
+  if (_crt_bundle_attach) {
+    config.crt_bundle_attach = _crt_bundle_attach;
+    ESP_LOGI(OtaHelperLog::TAG, "With TLS/HTTPS support");
+  } else {
+    ESP_LOGI(OtaHelperLog::TAG, "Without TLS/HTTPS support");
+  }
+  esp_http_client_handle_t client = esp_http_client_init(&config);
+
+  ESP_LOGI(OtaHelperLog::TAG, "Using URL %s", url.c_str());
+  esp_http_client_set_method(client, HTTP_METHOD_GET);
+  esp_http_client_set_header(client, "Accept", "*/*");
+  esp_http_client_set_timeout_ms(client, HTTP_REMOTE_TIMEOUT_MS);
+
+  bool success = false;
+  esp_err_t r = esp_http_client_open(client, 0);
+  if (r == ESP_OK) {
+    esp_http_client_fetch_headers(client);
+    auto status_code = esp_http_client_get_status_code(client);
+    auto content_length = esp_http_client_get_content_length(client);
+    ESP_LOGI(OtaHelperLog::TAG, "HTTP status code: %d, content length: %d", status_code, content_length);
+
+    if (status_code == 200) {
+      if (content_length > partition->size) {
+        ESP_LOGE(OtaHelperLog::TAG, "Content length %d is larger than partition size %d", content_length,
+                 partition->size);
+      } else {
+        success = writeStreamToPartition(partition, flash_mode, content_length, md5hash,
+                                         [&](char *buffer, size_t buffer_size, size_t total_bytes_left) {
+                                           return fillBuffer(client, buffer, buffer_size);
+                                         });
+      }
+    } else {
+      ESP_LOGE(OtaHelperLog::TAG, "Got non 200 status code: %d", status_code);
+    }
+
+  } else {
+    const char *errstr = esp_err_to_name(r);
+    ESP_LOGE(OtaHelperLog::TAG, "Failed to open HTTP connection: %s", errstr);
+  }
+
+  esp_http_client_close(client);
+  esp_http_client_cleanup(client);
+
+  if (buffer != nullptr) {
+    free(buffer);
+  }
+  return success;
+}
+
 /**
- * @brief Fill buffer with data from HTTP request
+ * @brief Fill buffer with data from HTTP local webserver
  */
 int OtaHelper::fillBuffer(httpd_req_t *req, char *buffer, size_t buffer_size) {
   int total_read = 0;
@@ -150,6 +264,26 @@ int OtaHelper::fillBuffer(int socket, char *buffer, size_t buffer_size, size_t t
         return total_read;
       }
     }
+  }
+  return total_read;
+}
+
+/**
+ * @brief Fill buffer with data from HTTP remote webserver
+ */
+int OtaHelper::fillBuffer(esp_http_client_handle_t client, char *buffer, size_t buffer_size) {
+  int total_read = 0;
+  while (total_read < buffer_size) {
+    int read = esp_http_client_read(client, buffer + total_read, buffer_size - total_read);
+    if (read <= 0) {
+      if (esp_http_client_is_complete_data_received(client)) {
+        return total_read;
+      } else {
+        ESP_LOGE(OtaHelperLog::TAG, "Failed to fill buffer, read zero and not complete.");
+        return -1;
+      }
+    }
+    total_read += read;
   }
   return total_read;
 }
