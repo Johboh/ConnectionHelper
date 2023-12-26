@@ -1,4 +1,4 @@
-FILE(GLOB_RECURSE lib_sources "./espidf/*.*")
+FILE(GLOB_RECURSE lib_sources "./espidf/impl/*.*")
 
 idf_component_register(COMPONENT_NAME "ConnectionHelper"
                         SRCS ${lib_sources}

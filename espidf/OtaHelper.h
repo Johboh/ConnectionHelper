@@ -52,6 +52,7 @@ private: // OTA (generic)
 
   bool
   writeStreamToPartition(const esp_partition_t *partition, FlashMode flash_mode, size_t content_length,
+                         std::string &md5hash,
                          std::function<int(char *buffer, size_t buffer_size, size_t total_bytes_left)> fill_buffer);
   bool writeBufferToPartition(const esp_partition_t *partition, size_t bytes_written, char *buffer, size_t buffer_size,
                               uint8_t skip);

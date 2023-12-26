@@ -1,4 +1,5 @@
 #include "OtaHelper.h"
+#include "MD5Builder.h"
 #include <esp_log.h>
 #include <esp_ota_ops.h>
 #include <lwip/sockets.h>
@@ -81,7 +82,8 @@ esp_err_t OtaHelper::httpPostHandler(httpd_req_t *req) {
   }
   ESP_LOGI(OtaHelperLog::TAG, "OTA started via HTTP with target partition: %s", partition->label);
 
-  if (!_this->writeStreamToPartition(partition, flash_mode, req->content_len,
+  std::string md5hash = ""; // No hash
+  if (!_this->writeStreamToPartition(partition, flash_mode, req->content_len, md5hash,
                                      [&_this, req](char *buffer, size_t buffer_size, size_t total_bytes_left) {
                                        return _this->fillBuffer(req, buffer, buffer_size);
                                      })) {
@@ -142,7 +144,7 @@ int OtaHelper::fillBuffer(int socket, char *buffer, size_t buffer_size, size_t t
         return -1;
       }
       // Are we at the end?
-      ESP_LOGI(OtaHelperLog::TAG, "Read %s bytes from socket, total_read: %d, total_bytes_left: %d",
+      ESP_LOGV(OtaHelperLog::TAG, "Read %s bytes from socket, total_read: %d, total_bytes_left: %d",
                bytes_filled.c_str(), total_read, total_bytes_left);
       if (total_read >= total_bytes_left) {
         return total_read;
@@ -153,7 +155,7 @@ int OtaHelper::fillBuffer(int socket, char *buffer, size_t buffer_size, size_t t
 }
 
 bool OtaHelper::writeStreamToPartition(
-    const esp_partition_t *partition, FlashMode flash_mode, size_t content_length,
+    const esp_partition_t *partition, FlashMode flash_mode, size_t content_length, std::string &md5hash,
     std::function<int(char *buffer, size_t buffer_size, size_t total_bytes_left)> fill_buffer) {
   char *buffer = (char *)malloc(SPI_FLASH_SEC_SIZE);
   if (buffer == nullptr) {
@@ -162,6 +164,9 @@ bool OtaHelper::writeStreamToPartition(
   }
 
   uint8_t skip_buffer[ENCRYPTED_BLOCK_SIZE];
+
+  EspNowMD5Builder md5;
+  md5.begin();
 
   int bytes_read = 0;
   while (bytes_read < content_length) {
@@ -198,11 +203,23 @@ bool OtaHelper::writeStreamToPartition(
       return false;
     }
 
+    md5.add((uint8_t *)buffer, (uint16_t)bytes_filled);
     bytes_read += bytes_filled;
 
     // If this is the end, finish up.
     if (bytes_read == content_length) {
-      ESP_LOGI(OtaHelperLog::TAG, "End of buffer");
+      ESP_LOGI(OtaHelperLog::TAG, "End of stream, writing data to partition");
+
+      if (!md5hash.empty()) {
+        md5.calculate();
+        if (md5hash != md5.toString()) {
+          ESP_LOGE(OtaHelperLog::TAG, "MD5 checksum verification failed.");
+          free(buffer);
+          return false;
+        } else {
+          ESP_LOGI(OtaHelperLog::TAG, "MD5 checksum correct.");
+        }
+      }
 
       if (flash_mode == FlashMode::FIRMWARE) {
         auto r = esp_partition_write(partition, 0, (uint32_t *)skip_buffer, ENCRYPTED_BLOCK_SIZE);
@@ -532,7 +549,7 @@ bool OtaHelper::connectToHostForArduino(ArduinoOtaUpdate &update, char *host_ip)
   }
   ESP_LOGI(OtaHelperLog::TAG, "Successfully connected to host");
 
-  auto ok = writeStreamToPartition(partition, update.flash_mode, update.size,
+  auto ok = writeStreamToPartition(partition, update.flash_mode, update.size, update.md5,
                                    [&](char *buffer, size_t buffer_size, size_t total_bytes_left) {
                                      return fillBuffer(sock, buffer, buffer_size, total_bytes_left);
                                    });
@@ -545,7 +562,7 @@ bool OtaHelper::connectToHostForArduino(ArduinoOtaUpdate &update, char *host_ip)
 
   ESP_LOGI(OtaHelperLog::TAG, "TCP OTA complete, rebooting...");
 
-  int err = send(sock, ESPOTA_SUCCESSFUL, strlen(ESPOTA_SUCCESSFUL), 0);
+  err = send(sock, ESPOTA_SUCCESSFUL, strlen(ESPOTA_SUCCESSFUL), 0);
   if (err < 0) {
     ESP_LOGE(OtaHelperLog::TAG, "Failed to ack TCP update, its fine.");
   }
