@@ -1,12 +1,12 @@
 {
     "name": "ConnectionHelper",
     "keywords": "esp8266, esp32, ota, wifi",
-    "description": "A small Arduino library for setting up WiFi and OTA (Over The Air)",
+    "description": "Library for setting up WiFi and OTA (Over The Air)",
     "authors":
     {
       "name": "Johan Böhlin"
     },
-    "version": "1.1.0",
+    "version": "2.0.0",
     "license": "MIT",
     "repository":
     {
@@ -15,11 +15,23 @@
     },
     "frameworks": "arduino",
     "platforms": ["espressif8266", "espressif32"],
+    "examples": [
+      {
+          "name": "WifiAndOta",
+          "base": "examples/Simple",
+          "files": ["WifiAndOta.ino"]
+      }
+    ],
+    "build": {
+      "includeDir": "includes",
+      "srcDir":"arduino"
+    },
     "dependencies": [
         {
           "owner": "ayushsharma82",
           "name": "ElegantOTA",
-          "version": "^2.2.9"
+          "version": "^2.2.9",
+          "frameworks:": ["arduino"]
         }
       ]
   }

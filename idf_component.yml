@@ -1,0 +1,5 @@
+version: "2.0.0"
+description: Library for setting up WiFi and OTA (Over The Air)
+url: https://github.com/Johboh/ConnectionHelper
+dependencies:
+  idf: ">=4.4.3"
