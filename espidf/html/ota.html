@@ -1,89 +1,209 @@
-<style>
-  .progress {
-    margin: 15px auto;
-    max-width: 500px;
-    height: 30px;
-  }
-  .progress .progress__bar {
-    height: 100%;
-    width: 1%;
-    border-radius: 15px;
-    background: repeating-linear-gradient(
-      135deg,
-      #1ed760,
-      #0ed760 15px,
-      #03d760 15px,
-      #03d760 30px
-    );
-  }
-  .status {
-    font-weight: bold;
-    font-size: 30px;
-  }
-</style>
-<link
-  rel="stylesheet"
-  href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/2.2.1/css/bootstrap.min.css"
-/>
-<div class="well" style="text-align: center">
-  <div class="btn" onclick="file_sel.click();">
-    <i class="icon-upload" style="padding-right: 5px"></i>Upload Firmware
-  </div>
-  <div style="text-align: center">
-    <label>
-      <input type="radio" name="flash_mode" value="firmware" checked />
-      Firmware
-    </label>
-    <label>
-      <input type="radio" name="flash_mode" value="spiffs" />
-      Filesystem (spiffs)
-    </label>
-  </div>
-  <div class="progress"><div class="progress__bar" id="progress"></div></div>
-  <div class="status" id="status_div"></div>
-  <div class="device" id="device">$id</div>
-</div>
-<input
-  type="file"
-  id="file_sel"
-  onchange="upload_file()"
-  style="display: none"
-/>
-<script>
-  function upload_file() {
-    document.getElementById("status_div").innerHTML = "Upload in progress";
-    let data = document.getElementById("file_sel").files[0];
-
-    // Get the selected flash_mode value
-    let flashMode = document.querySelector(
-      'input[name="flash_mode"]:checked'
-    ).value;
-
-    xhr = new XMLHttpRequest();
-    xhr.open("POST", "/", true);
-    xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
-    xhr.setRequestHeader("X-Flash-Mode", flashMode);
-    xhr.upload.addEventListener("progress", function (event) {
-      if (event.lengthComputable) {
-        document.getElementById("progress").style.width =
-          (event.loaded / event.total) * 100 + "%";
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>File Upload</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/2.2.1/css/bootstrap.min.css"
+    />
+    <style>
+      /* Custom Styles */
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f4f4f4;
+        margin: 0;
+        padding: 0;
       }
-    });
-    xhr.onreadystatechange = function () {
-      if (xhr.readyState === XMLHttpRequest.DONE) {
-        var status = xhr.status;
-        if (status >= 200 && status < 400) {
-          document.getElementById("status_div").innerHTML =
-            "Upload accepted. Device will reboot.";
-          window.setTimeout(function () {
-            location.href = location.origin;
-          }, 7000);
-        } else {
-          document.getElementById("status_div").innerHTML = "Upload rejected!";
-        }
+      .container {
+        max-width: 800px;
+        margin: 50px auto;
+        padding: 20px;
+        background-color: #fff;
+        border-radius: 8px;
+        box-shadow: 0px 0px 20px rgba(0, 0, 0, 0.1);
+        text-align: center;
       }
-    };
-    xhr.send(data);
-    return false;
-  }
-</script>
+      h1 {
+        margin-bottom: 20px;
+      }
+      .upload-wrapper {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 20px;
+      }
+      .upload-btn {
+        padding: 10px 20px;
+        background-color: #1ed760;
+        color: #fff;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+        margin-right: 10px;
+      }
+      .upload-btn:hover {
+        background-color: #0ed760;
+      }
+      input[type="file"] {
+        display: none;
+      }
+      .radio-group {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 20px;
+      }
+      .radio-group label {
+        margin-right: 15px;
+        position: relative;
+        cursor: pointer;
+        font-size: 16px;
+        color: #333;
+        display: flex;
+        align-items: center;
+      }
+      .radio-group label input[type="radio"] {
+        opacity: 0;
+        position: absolute;
+        pointer-events: none;
+      }
+      .checkmark {
+        height: 20px;
+        width: 20px;
+        border: 1px solid #aaa;
+        border-radius: 50%;
+        margin-right: 8px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        transition: background-color 0.3s ease;
+      }
+      .radio-group label input[type="radio"]:checked ~ .checkmark {
+        border-color: #1ed760;
+      }
+      .checkmark:after {
+        content: "";
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #1ed760;
+        display: none;
+      }
+      .radio-group label input[type="radio"]:checked ~ .checkmark:after {
+        display: block;
+      }
+      .radio-group label:hover .checkmark {
+        background-color: #f5f5f5;
+      }
+      .radio-group label:hover input[type="radio"]:checked ~ .checkmark {
+        border-color: #0ed760;
+      }
+      .progress {
+        height: 20px;
+        background-color: #eee;
+        border-radius: 10px;
+        overflow: hidden;
+        margin-bottom: 20px;
+      }
+      .progress .progress__bar {
+        height: 100%;
+        width: 0;
+        background: #1ed760;
+        border-radius: 10px;
+        transition: width 0.3s ease;
+      }
+      .status {
+        text-align: center;
+        margin-bottom: 15px;
+        font-weight: bold;
+        font-size: 20px;
+        color: #333;
+      }
+      .device {
+        text-align: center;
+        color: #888;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>File Upload</h1>
+      <div class="upload-wrapper">
+        <div class="upload-btn" onclick="fileSelectorClick()">
+          <i class="icon-upload" style="padding-right: 5px"></i>Upload Firmware
+        </div>
+        <input
+          type="file"
+          id="file_sel"
+          onchange="uploadFile()"
+          style="display: none"
+        />
+      </div>
+      <div class="radio-group">
+        <label for="firmware">
+          <input
+            type="radio"
+            id="firmware"
+            name="flash_mode"
+            value="firmware"
+            checked
+          />
+          <span class="checkmark"></span>
+          Firmware
+        </label>
+        <label for="spiffs">
+          <input type="radio" id="spiffs" name="flash_mode" value="spiffs" />
+          <span class="checkmark"></span>
+          Filesystem (spiffs)
+        </label>
+      </div>
+      <div class="progress">
+        <div class="progress__bar" id="progress"></div>
+      </div>
+      <div class="status" id="status_div"></div>
+      <div class="device" id="device"><i>$id</i></div>
+    </div>
+    <script>
+      function uploadFile() {
+        document.getElementById("status_div").innerHTML = "Upload in progress";
+        let data = document.getElementById("file_sel").files[0];
+        let flashMode = document.querySelector(
+          'input[name="flash_mode"]:checked'
+        ).value;
+
+        let xhr = new XMLHttpRequest();
+        xhr.open("POST", "/", true);
+        xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+        xhr.setRequestHeader("X-Flash-Mode", flashMode);
+        xhr.upload.addEventListener("progress", function (event) {
+          if (event.lengthComputable) {
+            document.getElementById("progress").style.width =
+              (event.loaded / event.total) * 100 + "%";
+          }
+        });
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState === XMLHttpRequest.DONE) {
+            var status = xhr.status;
+            if (status >= 200 && status < 400) {
+              document.getElementById("status_div").innerHTML =
+                "Upload accepted. Device will reboot.";
+              window.setTimeout(function () {
+                location.href = location.origin;
+              }, 7000);
+            } else {
+              document.getElementById("status_div").innerHTML =
+                "Upload rejected! " + xhr.responseText;
+            }
+          }
+        };
+        xhr.send(data);
+        return false;
+      }
+
+      function fileSelectorClick() {
+        document.getElementById("file_sel").click();
+      }
+    </script>
+  </body>
+</html>
