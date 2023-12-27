@@ -48,14 +48,14 @@ void WiFiHelper::eventHandler(void *arg, esp_event_base_t event_base, int32_t ev
   }
 }
 
-WiFiHelper::WiFiHelper(const char *ssid, const char *password, const char *device_hostname,
-                       std::function<void(void)> on_connected, std::function<void(void)> on_disconnected)
-    : _ssid(ssid), _password(password), _device_hostname(device_hostname), _on_connected(on_connected),
-      _on_disconnected(on_disconnected) {
+WiFiHelper::WiFiHelper(const char *device_hostname, std::function<void(void)> on_connected,
+                       std::function<void(void)> on_disconnected)
+    : _device_hostname(device_hostname), _on_connected(on_connected), _on_disconnected(on_disconnected) {
   _wifi_event_group = xEventGroupCreate();
 }
 
-bool WiFiHelper::connectToAp(bool initializeNVS, int timeout_ms, bool reconnect) {
+bool WiFiHelper::connectToAp(const char *ssid, const char *password, bool initializeNVS, int timeout_ms,
+                             bool reconnect) {
   _reconnect = reconnect;
   if (initializeNVS) {
     if (!this->initializeNVS()) {
@@ -70,9 +70,9 @@ bool WiFiHelper::connectToAp(bool initializeNVS, int timeout_ms, bool reconnect)
     return false;
   }
 
-  esp_netif_t *sta = esp_netif_create_default_wifi_sta();
+  _netif_sta = esp_netif_create_default_wifi_sta();
 
-  if (!reportOnError(esp_netif_set_hostname(sta, _device_hostname), "failed to set hostname")) {
+  if (!reportOnError(esp_netif_set_hostname(_netif_sta, _device_hostname), "failed to set hostname")) {
     return false;
   }
 
@@ -96,8 +96,8 @@ bool WiFiHelper::connectToAp(bool initializeNVS, int timeout_ms, bool reconnect)
   }
 
   wifi_config_t wifi_config = {};
-  std::strncpy((char *)wifi_config.sta.ssid, _ssid, sizeof(wifi_config.sta.ssid));
-  std::strncpy((char *)wifi_config.sta.password, _password, sizeof(wifi_config.sta.password));
+  std::strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
+  std::strncpy((char *)wifi_config.sta.password, password, sizeof(wifi_config.sta.password));
 
   if (!reportOnError(esp_wifi_set_mode(WIFI_MODE_STA), "failed to set wifi mode to STA")) {
     return false;
@@ -116,17 +116,26 @@ bool WiFiHelper::connectToAp(bool initializeNVS, int timeout_ms, bool reconnect)
   /* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which event actually
    * happened. */
   if (bits & WIFI_CONNECTED_BIT) {
-    ESP_LOGI(WiFiHelperLog::TAG, "connected to AP with SSID: %s", _ssid);
+    ESP_LOGI(WiFiHelperLog::TAG, "connected to AP with SSID: %s", ssid);
     return true;
   } else {
     ESP_LOGE(WiFiHelperLog::TAG, "Unable to connect to AP, timeout.");
   }
 
   // On failure, cleanup.
-  esp_netif_destroy_default_wifi(sta);
+  disconnect();
+  return false;
+}
+
+void WiFiHelper::disconnect() {
+  _reconnect = false;
+  esp_wifi_stop();
+  if (_netif_sta != nullptr) {
+    esp_netif_destroy_default_wifi(_netif_sta);
+  }
   esp_event_loop_delete_default();
   esp_netif_deinit();
-  return false;
+  esp_wifi_deinit();
 }
 
 bool WiFiHelper::initializeNVS() {
