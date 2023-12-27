@@ -26,6 +26,8 @@ const char TAG[] = "OtaHelper";
  *   - supports authentication
  * - HTTP web interface via http://<device-ip>:<port-number>/
  *   - supports authentication (Basic, not secure)
+ *   - Can also be used as in script to upload firmware and spiffs directly by doing a file upload using POST to the
+ * same URI and setting the "X-Flash-Mode" header to either "firmware" or "spiffs".
  * - Using URI via remote HTTP server, invoked by the device itself.
  */
 class OtaHelper {
@@ -41,18 +43,21 @@ public:
    */
   typedef esp_err_t (*CrtBundleAttach)(void *conf);
 
-  struct Credentials {
-    std::string username = "";
-    std::string password = "";
-  };
-
   /**
    * @brief Configuration for Arduino OTA (called espota in Platform I/O).
    */
   struct ArduinoOta {
     bool enabled = true;
     uint16_t udp_listenting_port = 3232;
-    Credentials credentials; // Set username to non empty string to enable authentication.
+    /**
+     * Set password to non empty string to enable authentication.
+     */
+    std::string password = "";
+  };
+
+  struct Credentials {
+    std::string username = "";
+    std::string password = "";
   };
 
   /**
@@ -177,15 +182,21 @@ private: // OTA via remote URI
 private: // OTA via ArduinoOTA
   static void arduinoOtaUdpServerTask(void *pvParameters);
 
-  struct ArduinoOtaUpdate {
+  struct ArduinoAuthUpdate {
+    std::string cnonce;
+    std::string response;
+  };
+
+  struct ArduinoOtaHandshake {
     FlashMode flash_mode;
     uint16_t host_port;
     uint32_t size;
     std::string md5;
   };
 
-  std::optional<ArduinoOtaUpdate> parseUdpPacket(char *buffer, size_t buffer_size);
-  bool connectToHostForArduino(ArduinoOtaUpdate &update, char *host_ip);
+  std::optional<ArduinoAuthUpdate> parseAuthUdpPacket(char *buffer, size_t buffer_size);
+  std::optional<ArduinoOtaHandshake> parseHandshakeUdpPacket(char *buffer, size_t buffer_size);
+  bool connectToHostForArduino(ArduinoOtaHandshake &update, char *host_ip);
 
   int fillBuffer(int socket, char *buffer, size_t buffer_size, size_t total_bytes_left);
 

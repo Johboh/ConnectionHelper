@@ -23,10 +23,11 @@
 #include <esp_system.h>
 #include <string>
 
-class EspNowMD5Builder {
+class MD5Builder {
 public:
   void begin();
   void add(uint8_t *data, uint16_t len);
+  void add(std::string str);
   void calculate();
   void getChars(char *output);
   std::string toString();

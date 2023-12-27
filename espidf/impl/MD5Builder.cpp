@@ -19,22 +19,24 @@
 #include "MD5Builder.h"
 #include <cstring>
 
-void EspNowMD5Builder::begin() {
+void MD5Builder::begin() {
   std::memset(_buf, 0x00, ESP_ROM_MD5_DIGEST_LEN);
   esp_rom_md5_init(&_ctx);
 }
 
-void EspNowMD5Builder::add(uint8_t *data, uint16_t len) { esp_rom_md5_update(&_ctx, data, len); }
+void MD5Builder::add(std::string str) { add((uint8_t *)str.c_str(), (uint16_t)str.length()); }
 
-void EspNowMD5Builder::calculate() { esp_rom_md5_final(_buf, &_ctx); }
+void MD5Builder::add(uint8_t *data, uint16_t len) { esp_rom_md5_update(&_ctx, data, len); }
 
-void EspNowMD5Builder::getChars(char *output) {
+void MD5Builder::calculate() { esp_rom_md5_final(_buf, &_ctx); }
+
+void MD5Builder::getChars(char *output) {
   for (uint8_t i = 0; i < ESP_ROM_MD5_DIGEST_LEN; i++) {
     sprintf(output + (i * 2), "%02x", _buf[i]);
   }
 }
 
-std::string EspNowMD5Builder::toString() {
+std::string MD5Builder::toString() {
   char out[(ESP_ROM_MD5_DIGEST_LEN * 2) + 1];
   getChars(out);
   return std::string(out);

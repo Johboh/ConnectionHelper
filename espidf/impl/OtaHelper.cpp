@@ -50,7 +50,6 @@ bool OtaHelper::start() {
 
   // Username cleanup
   _configuration.web_ota.credentials.username = trim(_configuration.web_ota.credentials.username);
-  _configuration.arduino_ota.credentials.username = trim(_configuration.arduino_ota.credentials.username);
 
   ESP_LOGI(OtaHelperLog::TAG, "Starting OtaHelper with the following configuration");
   ESP_LOGI(OtaHelperLog::TAG, "  - Rollback Strategy: %s",
@@ -70,9 +69,9 @@ bool OtaHelper::start() {
   ESP_LOGI(OtaHelperLog::TAG, "  - Arduino OTA: %s", _configuration.arduino_ota.enabled ? "enabled" : "disabled");
   if (_configuration.arduino_ota.enabled) {
     ESP_LOGI(OtaHelperLog::TAG, "    - udp listenting port : %d", _configuration.arduino_ota.udp_listenting_port);
-    auto username = _configuration.arduino_ota.credentials.username;
-    if (!username.empty()) {
-      ESP_LOGI(OtaHelperLog::TAG, "    - username: %s", _configuration.arduino_ota.credentials.username.c_str());
+    auto password = _configuration.arduino_ota.password;
+    if (!password.empty()) {
+      ESP_LOGI(OtaHelperLog::TAG, "    - auth: enabled");
     }
 
     _rollback_bits_to_wait_for += ARDINO_OTA_STARTED_BIT;
@@ -438,6 +437,12 @@ void OtaHelper::arduinoOtaUdpServerTask(void *pvParameters) {
   auto port = _this->_configuration.arduino_ota.udp_listenting_port;
 
   while (1) {
+    // Two state management: if false we are waiting for the first normal handshake package. But if set to true we are
+    // waiting for the second authentication package.
+    // This is reset on any failure.
+    bool waiting_for_auth = false;
+    std::string auth_nonce = "";
+    std::optional<ArduinoOtaHandshake> handshake_packet;
 
     struct sockaddr_in dest_addr_ip4;
     dest_addr_ip4.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -466,33 +471,85 @@ void OtaHelper::arduinoOtaUdpServerTask(void *pvParameters) {
     while (1) {
       ESP_LOGI(OtaHelperLog::TAG, "waiting UDP packet...");
       int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0, (struct sockaddr *)&source_addr, &socklen);
-      ESP_LOGI(OtaHelperLog::TAG, "Got UDP packet with length %d", len);
+      ESP_LOGV(OtaHelperLog::TAG, "Got UDP packet with length %d", len);
 
       // Error occurred during receiving?
       if (len < 0) {
         ESP_LOGE(OtaHelperLog::TAG, "UDP recvfrom failed: errno %d", errno);
         break;
       } else {
-        // Parse packet.
-        auto udp_packet = _this->parseUdpPacket(rx_buffer, len);
-        if (!udp_packet) {
-          ESP_LOGE(OtaHelperLog::TAG, "Failed to parse UDP packet");
-          break;
+        std::string reply_string;
+
+        // Parse packets conditionally.
+        std::optional<ArduinoAuthUpdate> auth_packet;
+
+        if (!waiting_for_auth) {
+          handshake_packet = _this->parseHandshakeUdpPacket(rx_buffer, len);
+          if (!handshake_packet) {
+            ESP_LOGE(OtaHelperLog::TAG, "Failed to parse handshake UDP packet");
+            break;
+          }
+
+          // Need auth?
+          if (!_this->_configuration.arduino_ota.password.empty()) {
+            // Generate nounce.
+            MD5Builder nonce_md5;
+            nonce_md5.begin();
+            nonce_md5.add(std::to_string(esp_timer_get_time()));
+            nonce_md5.calculate();
+            auth_nonce = nonce_md5.toString();
+            reply_string = "AUTH " + auth_nonce;
+            waiting_for_auth = true;
+          } else {
+            // Send OK
+            reply_string = "OK";
+          }
+
+        } else {
+          auth_packet = _this->parseAuthUdpPacket(rx_buffer, len);
+          if (!auth_packet) {
+            ESP_LOGE(OtaHelperLog::TAG, "Failed to parse auth UDP packet");
+            break;
+          }
+
+          // Verify authentication
+          MD5Builder passwordmd5;
+          passwordmd5.begin();
+          passwordmd5.add(_this->_configuration.arduino_ota.password);
+          passwordmd5.calculate();
+          auto challenge = passwordmd5.toString() + ":" + auth_nonce + ":" + auth_packet->cnonce;
+
+          MD5Builder challengemd5;
+          challengemd5.begin();
+          challengemd5.add(challenge);
+          challengemd5.calculate();
+          auto result = challengemd5.toString();
+          if (result == auth_packet->response) {
+            reply_string = "OK";
+          } else {
+            ESP_LOGW(OtaHelperLog::TAG, "Authentication Failed");
+            reply_string = "Authentication Failed";
+          }
+
+          waiting_for_auth = false;
         }
 
-        // Send response
         // Get the sender's ip address as string
         inet_ntoa_r(((struct sockaddr_in *)&source_addr)->sin_addr, addr_str, sizeof(addr_str) - 1);
-        std::string ok = "OK";
-        int err = sendto(sock, ok.c_str(), ok.size(), 0, (struct sockaddr *)&source_addr, sizeof(source_addr));
+
+        int err = sendto(sock, reply_string.c_str(), reply_string.size(), 0, (struct sockaddr *)&source_addr,
+                         sizeof(source_addr));
         if (err < 0) {
           ESP_LOGE(OtaHelperLog::TAG, "error occurred during sending UDP: errno %d", errno);
           break;
+        } else {
+          ESP_LOGV(OtaHelperLog::TAG, "Sent UDP reply: %s", reply_string.c_str());
         }
 
-        // Handle OTA.
-        if (udp_packet) {
-          _this->connectToHostForArduino(*udp_packet, addr_str);
+        // Handle OTA (if not waiting for auth)
+        if (handshake_packet && !waiting_for_auth) {
+          _this->connectToHostForArduino(*handshake_packet, addr_str);
+          break; // Fail or OK, restart UDP.
         }
       }
     }
@@ -509,7 +566,7 @@ void OtaHelper::arduinoOtaUdpServerTask(void *pvParameters) {
 /**
  * @brief Parses the buffer received from the Arduino upload server.
  * The buffer contains the received packet.
- * The packet first contains an integer as a string (this is the flash_mode, uint8_t), followed by a space,
+ * The packet first contains an integer as a string (this is the command, uint8_t), followed by a space,
  * then another integer as a string (this is the size of the host port number, uint16_t), followed by a space,
  * then another integer as a string (this is the size of the firmware, uint16_t), followed by a space,
  * then a MD5 string in hex (32 characters) which ends with a new line.
@@ -517,8 +574,8 @@ void OtaHelper::arduinoOtaUdpServerTask(void *pvParameters) {
  * @param buffer the input buffer.
  * @param buffer_size the length of the buffer.
  */
-std::optional<OtaHelper::ArduinoOtaUpdate> OtaHelper::parseUdpPacket(char *buffer, size_t buffer_size) {
-  ArduinoOtaUpdate update;
+std::optional<OtaHelper::ArduinoOtaHandshake> OtaHelper::parseHandshakeUdpPacket(char *buffer, size_t buffer_size) {
+  ArduinoOtaHandshake update;
 
   // Tokenize the buffer using strtok function
   char *token = strtok(buffer, " ");
@@ -526,11 +583,11 @@ std::optional<OtaHelper::ArduinoOtaUpdate> OtaHelper::parseUdpPacket(char *buffe
     return std::nullopt;
   }
 
-  // Parse flash_mode integer
-  uint8_t flash_mode = static_cast<uint8_t>(std::atoi(token));
-  if (flash_mode == UDP_CMD_WRITE_FIRMWARE) {
+  // Parse command integer
+  uint8_t command = static_cast<uint8_t>(std::atoi(token));
+  if (command == UDP_CMD_WRITE_FIRMWARE) {
     update.flash_mode = FlashMode::FIRMWARE;
-  } else if (flash_mode == UDP_CMD_WRITE_SPIFFS) {
+  } else if (command == UDP_CMD_WRITE_SPIFFS) {
     update.flash_mode = FlashMode::SPIFFS;
   } else {
     return std::nullopt;
@@ -560,7 +617,45 @@ std::optional<OtaHelper::ArduinoOtaUpdate> OtaHelper::parseUdpPacket(char *buffe
   return update;
 }
 
-bool OtaHelper::connectToHostForArduino(ArduinoOtaUpdate &update, char *host_ip) {
+std::optional<OtaHelper::ArduinoAuthUpdate> OtaHelper::parseAuthUdpPacket(char *buffer, size_t buffer_size) {
+  ArduinoAuthUpdate auth;
+
+  // Tokenize the buffer using strtok function
+  char *token = strtok(buffer, " ");
+  if (token == nullptr) {
+    return std::nullopt;
+  }
+
+  // Parse command integer
+  uint8_t command = static_cast<uint8_t>(std::atoi(token));
+  if (command != UDP_CMD_AUTH) {
+    return std::nullopt;
+  }
+
+  // Parse cnonce
+  token = strtok(nullptr, " ");
+  if (token == nullptr) {
+    return std::nullopt;
+  }
+  auth.cnonce = token;
+  if (auth.cnonce.length() != 32) {
+    return std::nullopt;
+  }
+
+  // Parse response
+  token = strtok(nullptr, "\n");
+  if (token == nullptr) {
+    return std::nullopt;
+  }
+  auth.response = token;
+  if (auth.response.length() != 32) {
+    return std::nullopt;
+  }
+
+  return auth;
+}
+
+bool OtaHelper::connectToHostForArduino(ArduinoOtaHandshake &update, char *host_ip) {
   ESP_LOGV(OtaHelperLog::TAG, "Connecting to host %s", host_ip);
   ESP_LOGV(OtaHelperLog::TAG, "host_port: %d", update.host_port);
   ESP_LOGV(OtaHelperLog::TAG, "flash_mode: %d", update.flash_mode);
@@ -663,7 +758,7 @@ bool OtaHelper::writeStreamToPartition(
 
   uint8_t skip_buffer[ENCRYPTED_BLOCK_SIZE];
 
-  EspNowMD5Builder md5;
+  MD5Builder md5;
   md5.begin();
 
   int bytes_read = 0;
