@@ -8,6 +8,8 @@
 #include <esp_http_server.h>
 #include <esp_netif.h>
 #include <esp_partition.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/event_groups.h>
 #include <functional>
 #include <optional>
 #include <string>
@@ -85,7 +87,8 @@ public:
      * https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/kconfig.html#config-bootloader-app-rollback-enable
      * must be set. Without this, there will be no rollback.
      *
-     * Rollback only apply when writing firmware, not spiffs.
+     * Rollback only apply when writing firmware, not spiffs. There is no automatic invalidation, but instead the app
+     * will be reverted on reboot if the rollback is not canceled (manually or automatically).
      *
      */
     RollbackStrategy rollback_strategy = RollbackStrategy::AUTO;
@@ -108,6 +111,12 @@ public:
    */
   bool start();
   void setup() { start(); }
+
+  /**
+   * @brief If the rollback strategy is MANUAL, call this to confirm that the new firmware is OK. Otherwise the previous
+   * image will be rolled back on reboot (if rollback is enabled in menuconfig, see RollbackStrategy).
+   */
+  void cancelRollback();
 
   enum class FlashMode {
     FIRMWARE,
@@ -152,7 +161,7 @@ private: // OTA via remote URI
   int fillBuffer(esp_http_client_handle_t client, char *buffer, size_t buffer_size);
 
 private: // OTA via ArduinoOTA
-  static void udpServerTask(void *pvParameters);
+  static void arduinoOtaUdpServerTask(void *pvParameters);
 
   struct ArduinoOtaUpdate {
     FlashMode flash_mode;
@@ -166,13 +175,19 @@ private: // OTA via ArduinoOTA
 
   int fillBuffer(int socket, char *buffer, size_t buffer_size, size_t total_bytes_left);
 
+private: // Rollback
+  static void rollbackWatcherTask(void *pvParameters);
+
 private: // Generic utils
   bool reportOnError(esp_err_t err, const char *msg);
   void replaceAll(std::string &s, const std::string &search, const std::string &replace);
+  std::string trim(const std::string &str);
 
 private:
   Configuration _configuration;
   CrtBundleAttach _crt_bundle_attach;
+  uint8_t _rollback_bits_to_wait_for;
+  EventGroupHandle_t _rollback_event_group;
 };
 
 #endif // __OTA_HELPER_H__

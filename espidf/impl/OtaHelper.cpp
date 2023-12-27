@@ -14,7 +14,7 @@
 #define UDP_CMD_AUTH 200
 #define ESPOTA_SUCCESSFUL "OK"
 
-// HTTP local OTA specific
+// Web OTA/HTTP local OTA specific
 #define FLASH_MODE_HDR_KEY "X-Flash-Mode"
 #define FLASH_MODE_FIRMWARE_STR "firmware"
 #define FLASH_MODE_SPIFFS_STR "spiffs"
@@ -27,14 +27,23 @@
 #define SPI_SECTORS_PER_BLOCK 16 // usually large erase block is 32k/64k
 #define SPI_FLASH_BLOCK_SIZE (SPI_SECTORS_PER_BLOCK * SPI_FLASH_SEC_SIZE)
 
+// Rollback related
+#define ARDINO_OTA_STARTED_BIT BIT0
+#define WEB_OTA_STARTED_BIT BIT1
+
 // #########################################################################
 // Public API
 // #########################################################################
 
 OtaHelper::OtaHelper(Configuration configuration, CrtBundleAttach crt_bundle_attach)
-    : _configuration(configuration), _crt_bundle_attach(crt_bundle_attach) {}
+    : _configuration(configuration), _crt_bundle_attach(crt_bundle_attach) {
+  _rollback_event_group = xEventGroupCreate();
+}
 
 bool OtaHelper::start() {
+
+  _rollback_bits_to_wait_for = 0;
+  xEventGroupClearBits(_rollback_event_group, 0xFF);
 
   ESP_LOGI(OtaHelperLog::TAG, "Starting OtaHelper with the following configuration");
   ESP_LOGI(OtaHelperLog::TAG, "  - Rollback Strategy: %s",
@@ -48,6 +57,7 @@ bool OtaHelper::start() {
     if (!username.empty()) {
       ESP_LOGI(OtaHelperLog::TAG, "    - username: %s", _configuration.web_ota.credentials.username.c_str());
     }
+    _rollback_bits_to_wait_for += WEB_OTA_STARTED_BIT;
   }
 
   ESP_LOGI(OtaHelperLog::TAG, "  - Arduino OTA: %s", _configuration.arduino_ota.enabled ? "enabled" : "disabled");
@@ -57,18 +67,39 @@ bool OtaHelper::start() {
     if (!username.empty()) {
       ESP_LOGI(OtaHelperLog::TAG, "    - username: %s", _configuration.arduino_ota.credentials.username.c_str());
     }
+
+    _rollback_bits_to_wait_for += ARDINO_OTA_STARTED_BIT;
   }
 
   ESP_LOGI(OtaHelperLog::TAG, "  - Remote URI download: enabled (always)");
 
+  if (_configuration.rollback_strategy == RollbackStrategy::AUTO) {
+    auto can_rollback = esp_ota_check_rollback_is_possible();
+    if (can_rollback) {
+      xTaskCreate(rollbackWatcherTask, "rollback", 4096, this, 5, NULL);
+    } else {
+      ESP_LOGI(OtaHelperLog::TAG, "Not starting rollback watcher (either this is the only app, or other error)");
+    }
+  }
+
   if (_configuration.arduino_ota.enabled) {
-    xTaskCreate(udpServerTask, "arduino_udp", 4096, this, 5, NULL);
+    xTaskCreate(arduinoOtaUdpServerTask, "arduino_udp", 4096, this, 5, NULL);
   }
 
   if (_configuration.web_ota.enabled) {
     return startWebserver();
   } else {
     return true;
+  }
+}
+
+void OtaHelper::cancelRollback() {
+  if (!esp_ota_check_rollback_is_possible()) {
+    ESP_LOGW(OtaHelperLog::TAG,
+             "Rollback is not possible so no rollback to cancel (either this is the only app, or other error)");
+  } else {
+    ESP_LOGI(OtaHelperLog::TAG, "Canceling rollback and accepting the new firmware (if firmware where written)");
+    esp_ota_mark_app_valid_cancel_rollback();
   }
 }
 
@@ -191,6 +222,7 @@ bool OtaHelper::startWebserver() {
     return false;
   }
 
+  xEventGroupSetBits(_rollback_event_group, WEB_OTA_STARTED_BIT);
   return true;
 }
 
@@ -335,7 +367,7 @@ int OtaHelper::fillBuffer(esp_http_client_handle_t client, char *buffer, size_t 
 // OTA via ArduinoOTA
 // #########################################################################
 
-void OtaHelper::udpServerTask(void *pvParameters) {
+void OtaHelper::arduinoOtaUdpServerTask(void *pvParameters) {
   OtaHelper *_this = (OtaHelper *)pvParameters;
 
   char rx_buffer[512];
@@ -363,6 +395,7 @@ void OtaHelper::udpServerTask(void *pvParameters) {
       break;
     }
     ESP_LOGI(OtaHelperLog::TAG, "UDP socket bound, port %d", port);
+    xEventGroupSetBits(_this->_rollback_event_group, ARDINO_OTA_STARTED_BIT);
 
     struct sockaddr_storage source_addr;
     socklen_t socklen = sizeof(source_addr);
@@ -736,6 +769,26 @@ const esp_partition_t *OtaHelper::findPartition(FlashMode flash_mode) {
 }
 
 // #########################################################################
+// Rollback
+// #########################################################################
+
+void OtaHelper::rollbackWatcherTask(void *pvParameters) {
+  OtaHelper *_this = (OtaHelper *)pvParameters;
+
+  // Wait just slightly to give things time.
+  vTaskDelay(5000 / portTICK_RATE_MS);
+
+  auto wait_bits = _this->_rollback_bits_to_wait_for;
+  if (wait_bits > 0) {
+    xEventGroupWaitBits(_this->_rollback_event_group, wait_bits, pdFALSE, pdFALSE, portMAX_DELAY);
+  }
+  // We got all bits, or no bits to wait for. Canceling rollback.
+  _this->cancelRollback();
+
+  vTaskDelete(NULL);
+}
+
+// #########################################################################
 // Generic utils
 // #########################################################################
 
@@ -757,4 +810,10 @@ void OtaHelper::replaceAll(std::string &s, const std::string &search, const std:
     s.erase(pos, search.length());
     s.insert(pos, replace);
   }
+}
+
+std::string OtaHelper::trim(const std::string &str) {
+  auto first = std::find_if_not(str.begin(), str.end(), [](int c) { return std::isspace(c); });
+  auto last = std::find_if_not(str.rbegin(), str.rend(), [](int c) { return std::isspace(c); }).base();
+  return (first == last ? std::string() : std::string(first, last));
 }
