@@ -18,11 +18,12 @@ const char TAG[] = "OtaHelper";
 
 /**
  * @brief Create a OTA (Over The Air) helper
- * Does not support AUTH for Ardunio OTA yet (TODO)
  *
- * Supports upload via:
+ * Supports upload of firmware and spiffs via:
  * - ArduinoOTA (called espota in Platform I/O), using Platform I/O, Arduino IDE or stand alone tools.
- * - HTTP web interface via http://<device-ip>:<port-number/
+ *   - supports authentication
+ * - HTTP web interface via http://<device-ip>:<port-number>/
+ *   - supports authentication
  * - Using URI via remote HTTP server, invoked by the device itself.
  */
 class OtaHelper {
@@ -38,16 +39,66 @@ public:
    */
   typedef esp_err_t (*CrtBundleAttach)(void *conf);
 
+  struct Credentials {
+    std::string username = "";
+    std::string password = "";
+  };
+
+  /**
+   * @brief Configuration for Arduino OTA (called espota in Platform I/O).
+   */
+  struct ArduinoOta {
+    bool enabled = true;
+    uint16_t udp_listenting_port = 3232;
+    Credentials credentials; // Set username to non empty string to enable authentication.
+  };
+
+  /**
+   * @brief Configuration for HTTP web interface.
+   *
+   */
+  struct WebOta {
+    std::string id = "";
+    bool enabled = true;
+    uint16_t http_port = 81;
+    Credentials credentials; // Set username to non empty string to enable authentication.
+  };
+
+  enum class RollbackStrategy {
+    /**
+     * @brief The OtaHelper will automatically mark the new firmware as OK once all OTA services are up and running in a
+     * steady state.
+     */
+    AUTO,
+    /**
+     * @brief User of the OtaHelper must manually call confirmRollback() to approve the new firmware. Otherwise it will
+     * rollback to the previous version on reboot.
+     */
+    MANUAL,
+  };
+
+  struct Configuration {
+    WebOta web_ota;
+    ArduinoOta arduino_ota;
+    /**
+     * @brief Rollback must be enabled in menuconfig where
+     * https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/kconfig.html#config-bootloader-app-rollback-enable
+     * must be set. Without this, there will be no rollback.
+     *
+     * Rollback only apply when writing firmware, not spiffs.
+     *
+     */
+    RollbackStrategy rollback_strategy = RollbackStrategy::AUTO;
+  };
+
   /**
    * @brief Construct a new Ota Helper.
    *
    * To set log level for this object, use: esp_log_level_set(OtaHelperLog::TAG, ESP_LOG_*);
    *
-   * @param id the ID for identifying this device when using the web interface to upload new
-   * firmware.
-   * @param port the port number to run the HTTP webserver.
+   * @param configuration configuration for the OTA services and rollback strategy.
    */
-  OtaHelper(const char *id, uint16_t port = 81, CrtBundleAttach crt_bundle_attach = nullptr);
+  OtaHelper(Configuration configuration, CrtBundleAttach crt_bundle_attach = nullptr);
 
 public:
   /**
@@ -120,8 +171,7 @@ private: // Generic utils
   void replaceAll(std::string &s, const std::string &search, const std::string &replace);
 
 private:
-  uint16_t _port;
-  const std::string _id;
+  Configuration _configuration;
   CrtBundleAttach _crt_bundle_attach;
 };
 

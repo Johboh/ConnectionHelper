@@ -9,9 +9,9 @@
 #endif
 
 // Arduino OTA specific
-#define UDP_LISTEN_PORT 3232
-#define UDP_FLASH_MODE_FIRMWARE 0
-#define UDP_FLASH_MODE_SPIFFS 100
+#define UDP_CMD_WRITE_FIRMWARE 0
+#define UDP_CMD_WRITE_SPIFFS 100
+#define UDP_CMD_AUTH 200
 #define ESPOTA_SUCCESSFUL "OK"
 
 // HTTP local OTA specific
@@ -31,14 +31,45 @@
 // Public API
 // #########################################################################
 
-OtaHelper::OtaHelper(const char *id, uint16_t port, CrtBundleAttach crt_bundle_attach)
-    : _port(port), _id(id), _crt_bundle_attach(crt_bundle_attach) {}
+OtaHelper::OtaHelper(Configuration configuration, CrtBundleAttach crt_bundle_attach)
+    : _configuration(configuration), _crt_bundle_attach(crt_bundle_attach) {}
 
 bool OtaHelper::start() {
 
-  xTaskCreate(udpServerTask, "udp_server", 4096, this, 5, NULL);
+  ESP_LOGI(OtaHelperLog::TAG, "Starting OtaHelper with the following configuration");
+  ESP_LOGI(OtaHelperLog::TAG, "  - Rollback Strategy: %s",
+           _configuration.rollback_strategy == RollbackStrategy::AUTO ? "AUTO" : "MANUAL");
 
-  return startWebserver();
+  ESP_LOGI(OtaHelperLog::TAG, "  - Web UI: %s", _configuration.web_ota.enabled ? "enabled" : "disabled");
+  if (_configuration.web_ota.enabled) {
+    ESP_LOGI(OtaHelperLog::TAG, "    - http port : %d", _configuration.web_ota.http_port);
+    ESP_LOGI(OtaHelperLog::TAG, "    - id : %s", _configuration.web_ota.id.c_str());
+    auto username = _configuration.web_ota.credentials.username;
+    if (!username.empty()) {
+      ESP_LOGI(OtaHelperLog::TAG, "    - username: %s", _configuration.web_ota.credentials.username.c_str());
+    }
+  }
+
+  ESP_LOGI(OtaHelperLog::TAG, "  - Arduino OTA: %s", _configuration.arduino_ota.enabled ? "enabled" : "disabled");
+  if (_configuration.arduino_ota.enabled) {
+    ESP_LOGI(OtaHelperLog::TAG, "    - udp listenting port : %d", _configuration.arduino_ota.udp_listenting_port);
+    auto username = _configuration.arduino_ota.credentials.username;
+    if (!username.empty()) {
+      ESP_LOGI(OtaHelperLog::TAG, "    - username: %s", _configuration.arduino_ota.credentials.username.c_str());
+    }
+  }
+
+  ESP_LOGI(OtaHelperLog::TAG, "  - Remote URI download: enabled (always)");
+
+  if (_configuration.arduino_ota.enabled) {
+    xTaskCreate(udpServerTask, "arduino_udp", 4096, this, 5, NULL);
+  }
+
+  if (_configuration.web_ota.enabled) {
+    return startWebserver();
+  } else {
+    return true;
+  }
 }
 
 bool OtaHelper::updateFrom(std::string &url, FlashMode flash_mode, std::string md5_hash) {
@@ -73,7 +104,7 @@ esp_err_t OtaHelper::httpGetHandler(httpd_req_t *req) {
 
   std::string html;
   html.assign((char *)html_start, html_size);
-  _this->replaceAll(html, "$id", _this->_id);
+  _this->replaceAll(html, "$id", _this->_configuration.web_ota.id);
 
   httpd_resp_send(req, html.c_str(), HTTPD_RESP_USE_STRLEN);
   return ESP_OK;
@@ -133,7 +164,7 @@ esp_err_t OtaHelper::httpPostHandler(httpd_req_t *req) {
 bool OtaHelper::startWebserver() {
   httpd_handle_t server = NULL;
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-  config.server_port = _port;
+  config.server_port = _configuration.web_ota.http_port;
   config.lru_purge_enable = true;
 
   if (!reportOnError(httpd_start(&server, &config), "failed to start httpd")) {
@@ -309,13 +340,14 @@ void OtaHelper::udpServerTask(void *pvParameters) {
 
   char rx_buffer[512];
   char addr_str[128];
+  auto port = _this->_configuration.arduino_ota.udp_listenting_port;
 
   while (1) {
 
     struct sockaddr_in dest_addr_ip4;
     dest_addr_ip4.sin_addr.s_addr = htonl(INADDR_ANY);
     dest_addr_ip4.sin_family = AF_INET;
-    dest_addr_ip4.sin_port = htons(UDP_LISTEN_PORT);
+    dest_addr_ip4.sin_port = htons(port);
     int ip_protocol = IPPROTO_IP;
 
     int sock = socket(AF_INET, SOCK_DGRAM, ip_protocol);
@@ -330,7 +362,7 @@ void OtaHelper::udpServerTask(void *pvParameters) {
       ESP_LOGE(OtaHelperLog::TAG, "UDP socket unable to bind: errno %d", errno);
       break;
     }
-    ESP_LOGI(OtaHelperLog::TAG, "UDP socket bound, port %d", UDP_LISTEN_PORT);
+    ESP_LOGI(OtaHelperLog::TAG, "UDP socket bound, port %d", port);
 
     struct sockaddr_storage source_addr;
     socklen_t socklen = sizeof(source_addr);
@@ -400,9 +432,9 @@ std::optional<OtaHelper::ArduinoOtaUpdate> OtaHelper::parseUdpPacket(char *buffe
 
   // Parse flash_mode integer
   uint8_t flash_mode = static_cast<uint8_t>(std::atoi(token));
-  if (flash_mode == UDP_FLASH_MODE_FIRMWARE) {
+  if (flash_mode == UDP_CMD_WRITE_FIRMWARE) {
     update.flash_mode = FlashMode::FIRMWARE;
-  } else if (flash_mode == UDP_FLASH_MODE_SPIFFS) {
+  } else if (flash_mode == UDP_CMD_WRITE_SPIFFS) {
     update.flash_mode = FlashMode::SPIFFS;
   } else {
     return std::nullopt;
