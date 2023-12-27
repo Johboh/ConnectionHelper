@@ -21,10 +21,9 @@ const char TAG[] = "OtaHelper";
  * Does not support AUTH for Ardunio OTA yet (TODO)
  *
  * Supports upload via:
- * - ArduinoOTA (called espota in Platform I/O)
- * - esptool (TODO)
+ * - ArduinoOTA (called espota in Platform I/O), using Platform I/O, Arduino IDE or stand alone tools.
  * - HTTP web interface via http://<device-ip>:<port-number/
- * - Via remote HTTP server, invoked by the device itself.
+ * - Using URI via remote HTTP server, invoked by the device itself.
  */
 class OtaHelper {
 public:
@@ -88,20 +87,20 @@ private: // OTA (generic)
 
   const esp_partition_t *findPartition(FlashMode flash_mode);
 
-private: // OTA via local HTTP webserver
+private: // OTA via local HTTP webserver / web UI
   bool startWebserver();
   int fillBuffer(httpd_req_t *req, char *buffer, size_t buffer_size);
 
   static esp_err_t httpGetHandler(httpd_req_t *req);
   static esp_err_t httpPostHandler(httpd_req_t *req);
 
-private: // OTA via remote HTTP websever
+private: // OTA via remote URI
   bool downloadAndWriteToPartition(const esp_partition_t *partition, FlashMode flash_mode, std::string &url,
                                    std::string &md5hash);
   static esp_err_t httpEventHandler(esp_http_client_event_t *evt);
   int fillBuffer(esp_http_client_handle_t client, char *buffer, size_t buffer_size);
 
-private: // OTA via ArdunioOTA/ESPOTA
+private: // OTA via ArduinoOTA
   static void udpServerTask(void *pvParameters);
 
   struct ArduinoOtaUpdate {

@@ -27,6 +27,10 @@
 #define SPI_SECTORS_PER_BLOCK 16 // usually large erase block is 32k/64k
 #define SPI_FLASH_BLOCK_SIZE (SPI_SECTORS_PER_BLOCK * SPI_FLASH_SEC_SIZE)
 
+// #########################################################################
+// Public API
+// #########################################################################
+
 OtaHelper::OtaHelper(const char *id, uint16_t port, CrtBundleAttach crt_bundle_attach)
     : _port(port), _id(id), _crt_bundle_attach(crt_bundle_attach) {}
 
@@ -36,6 +40,27 @@ bool OtaHelper::start() {
 
   return startWebserver();
 }
+
+bool OtaHelper::updateFrom(std::string &url, FlashMode flash_mode, std::string md5_hash) {
+  auto *partition = findPartition(flash_mode);
+  if (partition == nullptr) {
+    ESP_LOGE(OtaHelperLog::TAG, "Unable to find partition suitable partition");
+    return ESP_FAIL;
+  }
+
+  if (!md5_hash.empty() && md5_hash.length() != 32) {
+    ESP_LOGE(OtaHelperLog::TAG, "MD5 is not correct length. Expected length: 32, got %zu", md5_hash.length());
+    return false;
+  }
+
+  ESP_LOGI(OtaHelperLog::TAG, "OTA started via remoteHTTP with target partition: %s", partition->label);
+
+  return downloadAndWriteToPartition(partition, flash_mode, url, md5_hash);
+}
+
+// #########################################################################
+// OTA via local HTTP webserver / web UI
+// #########################################################################
 
 esp_err_t OtaHelper::httpGetHandler(httpd_req_t *req) {
   OtaHelper *_this = (OtaHelper *)req->user_ctx;
@@ -105,22 +130,62 @@ esp_err_t OtaHelper::httpPostHandler(httpd_req_t *req) {
   return ESP_OK;
 }
 
-bool OtaHelper::updateFrom(std::string &url, FlashMode flash_mode, std::string md5_hash) {
-  auto *partition = findPartition(flash_mode);
-  if (partition == nullptr) {
-    ESP_LOGE(OtaHelperLog::TAG, "Unable to find partition suitable partition");
-    return ESP_FAIL;
-  }
+bool OtaHelper::startWebserver() {
+  httpd_handle_t server = NULL;
+  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+  config.server_port = _port;
+  config.lru_purge_enable = true;
 
-  if (!md5_hash.empty() && md5_hash.length() != 32) {
-    ESP_LOGE(OtaHelperLog::TAG, "MD5 is not correct length. Expected length: 32, got %zu", md5_hash.length());
+  if (!reportOnError(httpd_start(&server, &config), "failed to start httpd")) {
     return false;
   }
 
-  ESP_LOGI(OtaHelperLog::TAG, "OTA started via remoteHTTP with target partition: %s", partition->label);
+  const httpd_uri_t ota_post = {
+      .uri = "/",
+      .method = HTTP_POST,
+      .handler = httpPostHandler,
+      .user_ctx = this,
+  };
+  if (!reportOnError(httpd_register_uri_handler(server, &ota_post), "failed to register uri handler for OTA post")) {
+    return false;
+  }
 
-  return downloadAndWriteToPartition(partition, flash_mode, url, md5_hash);
+  httpd_uri_t ota_root = {
+      .uri = "/",
+      .method = HTTP_GET,
+      .handler = httpGetHandler,
+      .user_ctx = this,
+  };
+  if (!reportOnError(httpd_register_uri_handler(server, &ota_root), "failed to register uri handler for OTA root")) {
+    return false;
+  }
+
+  return true;
 }
+
+/**
+ * @brief Fill buffer with data from HTTP local webserver
+ */
+int OtaHelper::fillBuffer(httpd_req_t *req, char *buffer, size_t buffer_size) {
+  int total_read = 0;
+  while (total_read < buffer_size) {
+    int read = httpd_req_recv(req, buffer + total_read, buffer_size - total_read);
+    if (read <= 0) {
+      if (read == HTTPD_SOCK_ERR_TIMEOUT || read == HTTPD_SOCK_ERR_FAIL) {
+        ESP_LOGE(OtaHelperLog::TAG, "Failed to fill buffer, read zero and not complete.");
+        return -1;
+      } else {
+        return total_read;
+      }
+    }
+    total_read += read;
+  }
+  return total_read;
+}
+
+// #########################################################################
+// OTA via remote URI
+// #########################################################################
 
 esp_err_t OtaHelper::httpEventHandler(esp_http_client_event_t *evt) {
 
@@ -216,60 +281,7 @@ bool OtaHelper::downloadAndWriteToPartition(const esp_partition_t *partition, Fl
 }
 
 /**
- * @brief Fill buffer with data from HTTP local webserver
- */
-int OtaHelper::fillBuffer(httpd_req_t *req, char *buffer, size_t buffer_size) {
-  int total_read = 0;
-  while (total_read < buffer_size) {
-    int read = httpd_req_recv(req, buffer + total_read, buffer_size - total_read);
-    if (read <= 0) {
-      if (read == HTTPD_SOCK_ERR_TIMEOUT || read == HTTPD_SOCK_ERR_FAIL) {
-        ESP_LOGE(OtaHelperLog::TAG, "Failed to fill buffer, read zero and not complete.");
-        return -1;
-      } else {
-        return total_read;
-      }
-    }
-    total_read += read;
-  }
-  return total_read;
-}
-
-/**
- * @brief Fill buffer with data from socket
- */
-int OtaHelper::fillBuffer(int socket, char *buffer, size_t buffer_size, size_t total_bytes_left) {
-  int total_read = 0;
-  while (total_read < buffer_size) {
-    int read = recv(socket, buffer + total_read, buffer_size - total_read, 0);
-    if (read < 0) {
-      ESP_LOGE(OtaHelperLog::TAG, "Failed to fill buffer, read error.");
-      return -1;
-    } else if (read == 0) {
-      ESP_LOGW(OtaHelperLog::TAG, "Connection closed by remote end.");
-      return total_read;
-    } else {
-      total_read += read;
-
-      auto bytes_filled = std::to_string(read);
-      int err = send(socket, bytes_filled.c_str(), bytes_filled.size(), 0);
-      if (err < 0) {
-        ESP_LOGE(OtaHelperLog::TAG, "Failed to ack when filling buffer.");
-        return -1;
-      }
-      // Are we at the end?
-      ESP_LOGV(OtaHelperLog::TAG, "Read %s bytes from socket, total_read: %d, total_bytes_left: %d",
-               bytes_filled.c_str(), total_read, total_bytes_left);
-      if (total_read >= total_bytes_left) {
-        return total_read;
-      }
-    }
-  }
-  return total_read;
-}
-
-/**
- * @brief Fill buffer with data from HTTP remote webserver
+ * @brief Fill buffer with data from URI/remote HTTP server.
  */
 int OtaHelper::fillBuffer(esp_http_client_handle_t client, char *buffer, size_t buffer_size) {
   int total_read = 0;
@@ -288,237 +300,9 @@ int OtaHelper::fillBuffer(esp_http_client_handle_t client, char *buffer, size_t 
   return total_read;
 }
 
-bool OtaHelper::writeStreamToPartition(
-    const esp_partition_t *partition, FlashMode flash_mode, size_t content_length, std::string &md5hash,
-    std::function<int(char *buffer, size_t buffer_size, size_t total_bytes_left)> fill_buffer) {
-  char *buffer = (char *)malloc(SPI_FLASH_SEC_SIZE);
-  if (buffer == nullptr) {
-    ESP_LOGE(OtaHelperLog::TAG, "Failed to allocate buffer of size %d", SPI_FLASH_SEC_SIZE);
-    return false;
-  }
-
-  uint8_t skip_buffer[ENCRYPTED_BLOCK_SIZE];
-
-  EspNowMD5Builder md5;
-  md5.begin();
-
-  int bytes_read = 0;
-  while (bytes_read < content_length) {
-    int bytes_filled = fill_buffer(buffer, SPI_FLASH_SEC_SIZE, content_length - bytes_read);
-    if (bytes_filled < 0) {
-      ESP_LOGE(OtaHelperLog::TAG, "Unable to fill buffer");
-      free(buffer);
-      return false;
-    }
-
-    ESP_LOGV(OtaHelperLog::TAG, "Filled buffer with: %d", bytes_filled);
-
-    // Special start case
-    // Check start if contains the magic byte.
-    uint8_t skip = 0;
-    if (bytes_read == 0 && flash_mode == FlashMode::FIRMWARE) {
-      if (buffer[0] != ESP_IMAGE_HEADER_MAGIC) {
-        ESP_LOGE(OtaHelperLog::TAG, "Start of firwmare does not contain magic byte");
-        free(buffer);
-        return false;
-      }
-
-      // Stash the first 16/ENCRYPTED_BLOCK_SIZE bytes of data and set the offset so they are
-      // not written at this point so that partially written firmware
-      // will not be bootable
-      memcpy(skip_buffer, buffer, sizeof(skip_buffer));
-      skip += sizeof(skip_buffer);
-    }
-
-    // Normal case - write buffer
-    if (!writeBufferToPartition(partition, bytes_read, buffer, bytes_filled, skip)) {
-      ESP_LOGE(OtaHelperLog::TAG, "Failed to write buffer to partition");
-      free(buffer);
-      return false;
-    }
-
-    md5.add((uint8_t *)buffer, (uint16_t)bytes_filled);
-    bytes_read += bytes_filled;
-
-    // If this is the end, finish up.
-    if (bytes_read == content_length) {
-      ESP_LOGI(OtaHelperLog::TAG, "End of stream, writing data to partition");
-
-      if (!md5hash.empty()) {
-        md5.calculate();
-        if (md5hash != md5.toString()) {
-          ESP_LOGE(OtaHelperLog::TAG, "MD5 checksum verification failed.");
-          free(buffer);
-          return false;
-        } else {
-          ESP_LOGI(OtaHelperLog::TAG, "MD5 checksum correct.");
-        }
-      }
-
-      if (flash_mode == FlashMode::FIRMWARE) {
-        auto r = esp_partition_write(partition, 0, (uint32_t *)skip_buffer, ENCRYPTED_BLOCK_SIZE);
-        if (!reportOnError(r, "Failed to enable partition")) {
-          free(buffer);
-          return false;
-        }
-
-        r = partitionIsBootable(partition);
-        if (!reportOnError(r, "Partition is not bootable")) {
-          free(buffer);
-          return false;
-        }
-
-        r = esp_ota_set_boot_partition(partition);
-        if (!reportOnError(r, "Failed to set partition as bootable")) {
-          free(buffer);
-          return false;
-        }
-      }
-    }
-
-    vTaskDelay(0); // Yield/reschedule
-  }
-
-  free(buffer);
-  return true;
-}
-
-bool OtaHelper::writeBufferToPartition(const esp_partition_t *partition, size_t bytes_written, char *buffer,
-                                       size_t buffer_size, uint8_t skip) {
-
-  size_t offset = partition->address + bytes_written;
-  bool block_erase =
-      (buffer_size - bytes_written >= SPI_FLASH_BLOCK_SIZE) &&
-      (offset % SPI_FLASH_BLOCK_SIZE == 0); // if it's the block boundary, than erase the whole block from here
-  bool part_head_sectors = partition->address % SPI_FLASH_BLOCK_SIZE &&
-                           offset < (partition->address / SPI_FLASH_BLOCK_SIZE + 1) *
-                                        SPI_FLASH_BLOCK_SIZE; // sector belong to unaligned partition heading block
-  bool part_tail_sectors = offset >= (partition->address + buffer_size) / SPI_FLASH_BLOCK_SIZE *
-                                         SPI_FLASH_BLOCK_SIZE; // sector belong to unaligned partition tailing block
-  if (block_erase || part_head_sectors || part_tail_sectors) {
-    esp_err_t r =
-        esp_partition_erase_range(partition, bytes_written, block_erase ? SPI_FLASH_BLOCK_SIZE : SPI_FLASH_SEC_SIZE);
-    if (!reportOnError(r, "Failed to erase range")) {
-      return false;
-    }
-  }
-
-  // try to skip empty blocks on unecrypted partitions
-  if (partition->encrypted || checkDataInBlock((uint8_t *)buffer + skip / sizeof(uint32_t), bytes_written - skip)) {
-    auto r = esp_partition_write(partition, bytes_written + skip, (uint32_t *)buffer + skip / sizeof(uint32_t),
-                                 buffer_size - skip);
-    if (!reportOnError(r, "Failed to write range")) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-esp_err_t OtaHelper::partitionIsBootable(const esp_partition_t *partition) {
-  uint8_t buf[ENCRYPTED_BLOCK_SIZE];
-  if (!partition) {
-    return ESP_ERR_INVALID_ARG;
-  }
-
-  esp_err_t r = esp_partition_read(partition, 0, (uint32_t *)buf, ENCRYPTED_BLOCK_SIZE);
-  if (r != ESP_OK) {
-    return r;
-  }
-
-  if (buf[0] != ESP_IMAGE_HEADER_MAGIC) {
-    return ESP_ERR_INVALID_CRC;
-  }
-  return ESP_OK;
-}
-
-bool OtaHelper::checkDataInBlock(const uint8_t *data, size_t len) {
-  // check 32-bit aligned blocks only
-  if (!len || len % sizeof(uint32_t))
-    return true;
-
-  size_t dwl = len / sizeof(uint32_t);
-
-  do {
-    if (*(uint32_t *)data ^ 0xffffffff) // for SPI NOR flash empty blocks are all one's, i.e. filled with 0xff byte
-      return true;
-
-    data += sizeof(uint32_t);
-  } while (--dwl);
-  return false;
-}
-
-const esp_partition_t *OtaHelper::findPartition(FlashMode flash_mode) {
-
-  if (flash_mode == FlashMode::FIRMWARE) {
-    const esp_partition_t *partition = esp_ota_get_next_update_partition(NULL);
-    if (partition == nullptr) {
-      ESP_LOGE(OtaHelperLog::TAG, "No firmware OTA partition found");
-    }
-    return partition;
-  } else if (flash_mode == FlashMode::SPIFFS) {
-    const esp_partition_t *partition =
-        esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, NULL);
-    if (partition == nullptr) {
-      ESP_LOGE(OtaHelperLog::TAG, "No SPIIFS partition found");
-    }
-    return partition;
-  }
-  return nullptr;
-}
-
-bool OtaHelper::startWebserver() {
-  httpd_handle_t server = NULL;
-  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-  config.server_port = _port;
-  config.lru_purge_enable = true;
-
-  if (!reportOnError(httpd_start(&server, &config), "failed to start httpd")) {
-    return false;
-  }
-
-  const httpd_uri_t ota_post = {
-      .uri = "/",
-      .method = HTTP_POST,
-      .handler = httpPostHandler,
-      .user_ctx = this,
-  };
-  if (!reportOnError(httpd_register_uri_handler(server, &ota_post), "failed to register uri handler for OTA post")) {
-    return false;
-  }
-
-  httpd_uri_t ota_root = {
-      .uri = "/",
-      .method = HTTP_GET,
-      .handler = httpGetHandler,
-      .user_ctx = this,
-  };
-  if (!reportOnError(httpd_register_uri_handler(server, &ota_root), "failed to register uri handler for OTA root")) {
-    return false;
-  }
-
-  return true;
-}
-
-bool OtaHelper::reportOnError(esp_err_t err, const char *msg) {
-  if (err != ESP_OK) {
-    ESP_LOGE(OtaHelperLog::TAG, "%s: %s", msg, esp_err_to_name(err));
-    return false;
-  }
-  return true;
-}
-
-void OtaHelper::replaceAll(std::string &s, const std::string &search, const std::string &replace) {
-  for (size_t pos = 0;; pos += replace.length()) {
-    // Locate the substring to replace
-    pos = s.find(search, pos);
-    if (pos == std::string::npos)
-      break;
-    // Replace by erasing and inserting
-    s.erase(pos, search.length());
-    s.insert(pos, replace);
-  }
-}
+// #########################################################################
+// OTA via ArduinoOTA
+// #########################################################################
 
 void OtaHelper::udpServerTask(void *pvParameters) {
   OtaHelper *_this = (OtaHelper *)pvParameters;
@@ -701,4 +485,244 @@ bool OtaHelper::connectToHostForArduino(ArduinoOtaUpdate &update, char *host_ip)
     ESP_LOGE(OtaHelperLog::TAG, "Failed to ack TCP update, its fine.");
   }
   return true;
+}
+
+/**
+ * @brief Fill buffer with data from socket
+ */
+int OtaHelper::fillBuffer(int socket, char *buffer, size_t buffer_size, size_t total_bytes_left) {
+  int total_read = 0;
+  while (total_read < buffer_size) {
+    int read = recv(socket, buffer + total_read, buffer_size - total_read, 0);
+    if (read < 0) {
+      ESP_LOGE(OtaHelperLog::TAG, "Failed to fill buffer, read error.");
+      return -1;
+    } else if (read == 0) {
+      ESP_LOGW(OtaHelperLog::TAG, "Connection closed by remote end.");
+      return total_read;
+    } else {
+      total_read += read;
+
+      auto bytes_filled = std::to_string(read);
+      int err = send(socket, bytes_filled.c_str(), bytes_filled.size(), 0);
+      if (err < 0) {
+        ESP_LOGE(OtaHelperLog::TAG, "Failed to ack when filling buffer.");
+        return -1;
+      }
+      // Are we at the end?
+      ESP_LOGV(OtaHelperLog::TAG, "Read %s bytes from socket, total_read: %d, total_bytes_left: %d",
+               bytes_filled.c_str(), total_read, total_bytes_left);
+      if (total_read >= total_bytes_left) {
+        return total_read;
+      }
+    }
+  }
+  return total_read;
+}
+
+// #########################################################################
+// ESP-IDF OTA generic
+// #########################################################################
+
+bool OtaHelper::writeStreamToPartition(
+    const esp_partition_t *partition, FlashMode flash_mode, size_t content_length, std::string &md5hash,
+    std::function<int(char *buffer, size_t buffer_size, size_t total_bytes_left)> fill_buffer) {
+  char *buffer = (char *)malloc(SPI_FLASH_SEC_SIZE);
+  if (buffer == nullptr) {
+    ESP_LOGE(OtaHelperLog::TAG, "Failed to allocate buffer of size %d", SPI_FLASH_SEC_SIZE);
+    return false;
+  }
+
+  uint8_t skip_buffer[ENCRYPTED_BLOCK_SIZE];
+
+  EspNowMD5Builder md5;
+  md5.begin();
+
+  int bytes_read = 0;
+  while (bytes_read < content_length) {
+    int bytes_filled = fill_buffer(buffer, SPI_FLASH_SEC_SIZE, content_length - bytes_read);
+    if (bytes_filled < 0) {
+      ESP_LOGE(OtaHelperLog::TAG, "Unable to fill buffer");
+      free(buffer);
+      return false;
+    }
+
+    ESP_LOGV(OtaHelperLog::TAG, "Filled buffer with: %d", bytes_filled);
+
+    // Special start case
+    // Check start if contains the magic byte.
+    uint8_t skip = 0;
+    if (bytes_read == 0 && flash_mode == FlashMode::FIRMWARE) {
+      if (buffer[0] != ESP_IMAGE_HEADER_MAGIC) {
+        ESP_LOGE(OtaHelperLog::TAG, "Start of firwmare does not contain magic byte");
+        free(buffer);
+        return false;
+      }
+
+      // Stash the first 16/ENCRYPTED_BLOCK_SIZE bytes of data and set the offset so they are
+      // not written at this point so that partially written firmware
+      // will not be bootable
+      memcpy(skip_buffer, buffer, sizeof(skip_buffer));
+      skip += sizeof(skip_buffer);
+    }
+
+    // Normal case - write buffer
+    if (!writeBufferToPartition(partition, bytes_read, buffer, bytes_filled, skip)) {
+      ESP_LOGE(OtaHelperLog::TAG, "Failed to write buffer to partition");
+      free(buffer);
+      return false;
+    }
+
+    md5.add((uint8_t *)buffer, (uint16_t)bytes_filled);
+    bytes_read += bytes_filled;
+
+    // If this is the end, finish up.
+    if (bytes_read == content_length) {
+      ESP_LOGI(OtaHelperLog::TAG, "End of stream, writing data to partition");
+
+      if (!md5hash.empty()) {
+        md5.calculate();
+        if (md5hash != md5.toString()) {
+          ESP_LOGE(OtaHelperLog::TAG, "MD5 checksum verification failed.");
+          free(buffer);
+          return false;
+        } else {
+          ESP_LOGI(OtaHelperLog::TAG, "MD5 checksum correct.");
+        }
+      }
+
+      if (flash_mode == FlashMode::FIRMWARE) {
+        auto r = esp_partition_write(partition, 0, (uint32_t *)skip_buffer, ENCRYPTED_BLOCK_SIZE);
+        if (!reportOnError(r, "Failed to enable partition")) {
+          free(buffer);
+          return false;
+        }
+
+        r = partitionIsBootable(partition);
+        if (!reportOnError(r, "Partition is not bootable")) {
+          free(buffer);
+          return false;
+        }
+
+        r = esp_ota_set_boot_partition(partition);
+        if (!reportOnError(r, "Failed to set partition as bootable")) {
+          free(buffer);
+          return false;
+        }
+      }
+    }
+
+    vTaskDelay(0); // Yield/reschedule
+  }
+
+  free(buffer);
+  return true;
+}
+
+bool OtaHelper::writeBufferToPartition(const esp_partition_t *partition, size_t bytes_written, char *buffer,
+                                       size_t buffer_size, uint8_t skip) {
+
+  size_t offset = partition->address + bytes_written;
+  bool block_erase =
+      (buffer_size - bytes_written >= SPI_FLASH_BLOCK_SIZE) &&
+      (offset % SPI_FLASH_BLOCK_SIZE == 0); // if it's the block boundary, than erase the whole block from here
+  bool part_head_sectors = partition->address % SPI_FLASH_BLOCK_SIZE &&
+                           offset < (partition->address / SPI_FLASH_BLOCK_SIZE + 1) *
+                                        SPI_FLASH_BLOCK_SIZE; // sector belong to unaligned partition heading block
+  bool part_tail_sectors = offset >= (partition->address + buffer_size) / SPI_FLASH_BLOCK_SIZE *
+                                         SPI_FLASH_BLOCK_SIZE; // sector belong to unaligned partition tailing block
+  if (block_erase || part_head_sectors || part_tail_sectors) {
+    esp_err_t r =
+        esp_partition_erase_range(partition, bytes_written, block_erase ? SPI_FLASH_BLOCK_SIZE : SPI_FLASH_SEC_SIZE);
+    if (!reportOnError(r, "Failed to erase range")) {
+      return false;
+    }
+  }
+
+  // try to skip empty blocks on unecrypted partitions
+  if (partition->encrypted || checkDataInBlock((uint8_t *)buffer + skip / sizeof(uint32_t), bytes_written - skip)) {
+    auto r = esp_partition_write(partition, bytes_written + skip, (uint32_t *)buffer + skip / sizeof(uint32_t),
+                                 buffer_size - skip);
+    if (!reportOnError(r, "Failed to write range")) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+esp_err_t OtaHelper::partitionIsBootable(const esp_partition_t *partition) {
+  uint8_t buf[ENCRYPTED_BLOCK_SIZE];
+  if (!partition) {
+    return ESP_ERR_INVALID_ARG;
+  }
+
+  esp_err_t r = esp_partition_read(partition, 0, (uint32_t *)buf, ENCRYPTED_BLOCK_SIZE);
+  if (r != ESP_OK) {
+    return r;
+  }
+
+  if (buf[0] != ESP_IMAGE_HEADER_MAGIC) {
+    return ESP_ERR_INVALID_CRC;
+  }
+  return ESP_OK;
+}
+
+bool OtaHelper::checkDataInBlock(const uint8_t *data, size_t len) {
+  // check 32-bit aligned blocks only
+  if (!len || len % sizeof(uint32_t))
+    return true;
+
+  size_t dwl = len / sizeof(uint32_t);
+
+  do {
+    if (*(uint32_t *)data ^ 0xffffffff) // for SPI NOR flash empty blocks are all one's, i.e. filled with 0xff byte
+      return true;
+
+    data += sizeof(uint32_t);
+  } while (--dwl);
+  return false;
+}
+
+const esp_partition_t *OtaHelper::findPartition(FlashMode flash_mode) {
+
+  if (flash_mode == FlashMode::FIRMWARE) {
+    const esp_partition_t *partition = esp_ota_get_next_update_partition(NULL);
+    if (partition == nullptr) {
+      ESP_LOGE(OtaHelperLog::TAG, "No firmware OTA partition found");
+    }
+    return partition;
+  } else if (flash_mode == FlashMode::SPIFFS) {
+    const esp_partition_t *partition =
+        esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, NULL);
+    if (partition == nullptr) {
+      ESP_LOGE(OtaHelperLog::TAG, "No SPIIFS partition found");
+    }
+    return partition;
+  }
+  return nullptr;
+}
+
+// #########################################################################
+// Generic utils
+// #########################################################################
+
+bool OtaHelper::reportOnError(esp_err_t err, const char *msg) {
+  if (err != ESP_OK) {
+    ESP_LOGE(OtaHelperLog::TAG, "%s: %s", msg, esp_err_to_name(err));
+    return false;
+  }
+  return true;
+}
+
+void OtaHelper::replaceAll(std::string &s, const std::string &search, const std::string &replace) {
+  for (size_t pos = 0;; pos += replace.length()) {
+    // Locate the substring to replace
+    pos = s.find(search, pos);
+    if (pos == std::string::npos)
+      break;
+    // Replace by erasing and inserting
+    s.erase(pos, search.length());
+    s.insert(pos, replace);
+  }
 }
