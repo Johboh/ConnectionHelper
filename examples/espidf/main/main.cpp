@@ -10,6 +10,8 @@
 
 #define PIN_LED GPIO_NUM_14
 
+// Configure OTA and set hostname for identifying this device.
+// Otherwise use defaults.
 OtaHelper::Configuration ota_configuration = {
     .web_ota =
         {
@@ -17,6 +19,7 @@ OtaHelper::Configuration ota_configuration = {
         },
 };
 OtaHelper _ota_helper(ota_configuration);
+
 WiFiHelper _wifi_helper(
     hostname, []() { ESP_LOGI(TAG, "on connected callback"); }, []() { ESP_LOGI(TAG, "on disconnected callback"); });
 
@@ -35,14 +38,15 @@ void app_main();
 }
 
 void app_main(void) {
+  // Setup led and blinking led task
   gpio_set_direction(PIN_LED, GPIO_MODE_OUTPUT);
   gpio_set_level(PIN_LED, 1);
-
   xTaskCreate(blinkAndSerialTask, "blinkAndSerialTask", 2048, NULL, 15, NULL);
 
+  // Connect to WIFI with 10s timeout.
   auto connected = _wifi_helper.connectToAp(wifi_ssid, wifi_password, true, 10000);
-
   if (connected) {
+    // Connected to WIFI, start OTA.
     if (!_ota_helper.start()) {
       ESP_LOGE(TAG, "Failed to start OTA");
     }
@@ -50,6 +54,7 @@ void app_main(void) {
     ESP_LOGE(TAG, "Failed to connect");
   }
 
+  // Run forever.
   while (1) {
     vTaskDelay(500 / portTICK_PERIOD_MS);
     fflush(stdout);

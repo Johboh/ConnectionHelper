@@ -41,14 +41,14 @@ dependencies:
 ### Parition table
 You need to have two app partitions in your parition table to be able to swap between otas. This is an example:
 ```
-# Name,   Type, SubType, Offset,  Size, Flags
-nvs,      data, nvs,     ,         0x4000
-otadata,  data, ota,     ,         0x2000
-phy_init, data, phy,     ,         0x1000
-coredump, data, coredump,,         64K
-ota_0,    app,  ota_0,   ,         1500K
-ota_1,    app,  ota_1,   ,         1500K
-spiffs,	  data,	spiffs,	 ,	       800K
+# Name,   Type,  SubType, Offset,          Size, Flags
+nvs,      data,      nvs,       ,           16K
+otadata,  data,      ota,       ,            8K
+phy_init, data,      phy,       ,            4K
+coredump, data, coredump,       ,           64K
+ota_0,     app,    ota_0,       ,         1500K
+ota_1,     app,    ota_1,       ,         1500K
+spiffs,   data,   spiffs,       ,          800K
 ```
 To set partition table, save above in a file called `partitions_with_ota.csv`. For ESP-IDF, specify to use this one using menuconfig. For platform I/O, add the following to your `platformio.ini`: `board_build.partitions = partitions_with_ota.csv`
 
