@@ -99,19 +99,29 @@
       .radio-group label:hover input[type="radio"]:checked ~ .checkmark {
         border-color: #0ed760;
       }
-      .progress {
+      .progress-wrapper {
+        position: relative;
         height: 20px;
         background-color: #eee;
         border-radius: 10px;
-        overflow: hidden;
         margin-bottom: 20px;
       }
-      .progress .progress__bar {
+      .progress__bar {
         height: 100%;
         width: 0;
         background: #1ed760;
         border-radius: 10px;
         transition: width 0.3s ease;
+      }
+      .progress-percent {
+        display: none;
+        position: absolute;
+        top: 0;
+        right: 0;
+        line-height: 20px;
+        padding: 0 10px;
+        font-size: 14px;
+        color: #333;
       }
       .status {
         text-align: center;
@@ -158,8 +168,9 @@
           Filesystem (spiffs)
         </label>
       </div>
-      <div class="progress">
+      <div class="progress-wrapper">
         <div class="progress__bar" id="progress"></div>
+        <div class="progress-percent">0%</div>
       </div>
       <div class="status" id="status_div"></div>
       <div class="device" id="device"><i>$id</i></div>
@@ -174,12 +185,14 @@
 
         let xhr = new XMLHttpRequest();
         xhr.open("POST", "/", true);
-        xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
         xhr.setRequestHeader("X-Flash-Mode", flashMode);
         xhr.upload.addEventListener("progress", function (event) {
           if (event.lengthComputable) {
             document.getElementById("progress").style.width =
               (event.loaded / event.total) * 100 + "%";
+            document.querySelector(".progress-percent").style.display = "block";
+            document.querySelector(".progress-percent").textContent =
+              Math.round((event.loaded / event.total) * 100) + "%";
           }
         });
         xhr.onreadystatechange = function () {
