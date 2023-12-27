@@ -1,7 +1,7 @@
 FILE(GLOB_RECURSE lib_sources "./espidf/impl/*.*")
 
 if(IDF_VERSION_MAJOR GREATER_EQUAL 5)
-set(required_components nvs_flash mbedtls esp_wifi esp_http_server esp_http_client esp-tls bootloader_support app_update esp_partition)
+set(required_components nvs_flash mbedtls esp_wifi esp_http_server esp_http_client esp-tls bootloader_support app_update esp_partition esp_timer)
 else()
 set(required_components nvs_flash mbedtls esp_wifi esp_http_server esp_http_client esp-tls bootloader_support app_update)
 endif()

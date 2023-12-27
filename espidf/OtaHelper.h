@@ -1,7 +1,6 @@
 #ifndef __OTA_HELPER_H__
 #define __OTA_HELPER_H__
 
-#include <cstdint>
 #include <esp_err.h>
 #include <esp_event.h>
 #include <esp_http_client.h>
@@ -11,7 +10,10 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/event_groups.h>
 #include <functional>
+#include <inttypes.h>
 #include <optional>
+#include <stdbool.h>
+#include <stdint.h>
 #include <string>
 
 namespace OtaHelperLog {

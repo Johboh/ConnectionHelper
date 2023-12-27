@@ -3,6 +3,7 @@
 #include <esp_app_format.h>
 #include <esp_log.h>
 #include <esp_ota_ops.h>
+#include <esp_timer.h>
 #include <esp_tls_crypto.h>
 #include <lwip/sockets.h>
 #include <lwip/sys.h>
@@ -382,12 +383,23 @@ bool OtaHelper::downloadAndWriteToPartition(const esp_partition_t *partition, Fl
     esp_http_client_fetch_headers(client);
     auto status_code = esp_http_client_get_status_code(client);
     auto content_length = esp_http_client_get_content_length(client);
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 1, 0)
+    ESP_LOGI(OtaHelperLog::TAG, "HTTP status code: %d, content length: %lld", status_code, content_length);
+#else
     ESP_LOGI(OtaHelperLog::TAG, "HTTP status code: %d, content length: %d", status_code, content_length);
+#endif
 
     if (status_code == 200) {
-      if (content_length > partition->size) {
+      uint32_t partition_size = partition->size;
+      if (content_length > partition_size) {
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 1, 0)
+        ESP_LOGE(OtaHelperLog::TAG, "Content length %lld is larger than partition size %lud", content_length,
+                 partition_size);
+#else
         ESP_LOGE(OtaHelperLog::TAG, "Content length %d is larger than partition size %d", content_length,
-                 partition->size);
+                 partition_size);
+#endif
+
       } else {
         success = writeStreamToPartition(partition, flash_mode, content_length, md5hash,
                                          [&](char *buffer, size_t buffer_size, size_t total_bytes_left) {
@@ -665,8 +677,8 @@ std::optional<OtaHelper::ArduinoAuthUpdate> OtaHelper::parseAuthUdpPacket(char *
 bool OtaHelper::connectToHostForArduino(ArduinoOtaHandshake &update, char *host_ip) {
   ESP_LOGV(OtaHelperLog::TAG, "Connecting to host %s", host_ip);
   ESP_LOGV(OtaHelperLog::TAG, "host_port: %d", update.host_port);
-  ESP_LOGV(OtaHelperLog::TAG, "flash_mode: %d", update.flash_mode);
-  ESP_LOGV(OtaHelperLog::TAG, "size: %d", update.size);
+  ESP_LOGV(OtaHelperLog::TAG, "flash_mode: %d", (int)update.flash_mode);
+  ESP_LOGV(OtaHelperLog::TAG, "size: %lud", update.size);
   ESP_LOGV(OtaHelperLog::TAG, "md5: %s", update.md5.c_str());
 
   const esp_partition_t *partition = findPartition(update.flash_mode);
