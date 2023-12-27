@@ -2,6 +2,7 @@
 #include "MD5Builder.h"
 #include <esp_log.h>
 #include <esp_ota_ops.h>
+#include <esp_tls_crypto.h>
 #include <lwip/sockets.h>
 #include <lwip/sys.h>
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 1, 0)
@@ -15,9 +16,11 @@
 #define ESPOTA_SUCCESSFUL "OK"
 
 // Web OTA/HTTP local OTA specific
+#define AUTHORIZATION_HDR_KEY "Authorization"
 #define FLASH_MODE_HDR_KEY "X-Flash-Mode"
 #define FLASH_MODE_FIRMWARE_STR "firmware"
 #define FLASH_MODE_SPIFFS_STR "spiffs"
+#define HTTPD_401 "401 UNAUTHORIZED"
 
 // HTTP remote OTA specifc
 #define HTTP_REMOTE_TIMEOUT_MS 15000
@@ -44,6 +47,10 @@ bool OtaHelper::start() {
 
   _rollback_bits_to_wait_for = 0;
   xEventGroupClearBits(_rollback_event_group, 0xFF);
+
+  // Username cleanup
+  _configuration.web_ota.credentials.username = trim(_configuration.web_ota.credentials.username);
+  _configuration.arduino_ota.credentials.username = trim(_configuration.arduino_ota.credentials.username);
 
   ESP_LOGI(OtaHelperLog::TAG, "Starting OtaHelper with the following configuration");
   ESP_LOGI(OtaHelperLog::TAG, "  - Rollback Strategy: %s",
@@ -124,8 +131,59 @@ bool OtaHelper::updateFrom(std::string &url, FlashMode flash_mode, std::string m
 // OTA via local HTTP webserver / web UI
 // #########################################################################
 
+void OtaHelper::setNotAuthenticatedResonse(httpd_req_t *req) {
+  httpd_resp_set_status(req, HTTPD_401);
+  httpd_resp_set_hdr(req, "Connection", "keep-alive");
+  httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"OtaHelper\"");
+  httpd_resp_send(req, "Not authenticated", HTTPD_RESP_USE_STRLEN);
+}
+
+bool OtaHelper::handleAuthentication(httpd_req_t *req) {
+  if (_configuration.web_ota.credentials.username.empty()) {
+    return true; // early return, nothing to authenticate.
+  }
+
+  size_t authorization_len = httpd_req_get_hdr_value_len(req, AUTHORIZATION_HDR_KEY) + 1;
+  if (authorization_len > 1) {
+    char *authorization = (char *)malloc(authorization_len);
+    esp_err_t err = httpd_req_get_hdr_value_str(req, AUTHORIZATION_HDR_KEY, authorization, authorization_len);
+    if (err != ESP_OK) {
+      ESP_LOGE(OtaHelperLog::TAG, "Unable to get authorization header: %s", esp_err_to_name(err));
+      setNotAuthenticatedResonse(req);
+      return false;
+    }
+
+    std::string user_info =
+        _configuration.web_ota.credentials.username + ":" + _configuration.web_ota.credentials.password;
+    size_t crypto_buffer_size = 0;
+    esp_crypto_base64_encode(NULL, 0, &crypto_buffer_size, (const unsigned char *)user_info.c_str(),
+                             user_info.length());
+    char buff[crypto_buffer_size];
+    esp_crypto_base64_encode((unsigned char *)buff, crypto_buffer_size, &crypto_buffer_size,
+                             (const unsigned char *)user_info.c_str(), user_info.length());
+    std::string expected_authorization = "Basic " + std::string(buff);
+
+    if (expected_authorization != std::string(authorization)) {
+      ESP_LOGW(OtaHelperLog::TAG, "Credentials does not match");
+      setNotAuthenticatedResonse(req);
+      return false;
+    }
+
+  } else {
+    ESP_LOGI(OtaHelperLog::TAG, "No credentials provided");
+    setNotAuthenticatedResonse(req);
+    return false;
+  }
+
+  return true; // All good.
+}
+
 esp_err_t OtaHelper::httpGetHandler(httpd_req_t *req) {
   OtaHelper *_this = (OtaHelper *)req->user_ctx;
+
+  if (!_this->handleAuthentication(req)) {
+    return ESP_FAIL;
+  }
 
   httpd_resp_set_status(req, HTTPD_200);
   httpd_resp_set_hdr(req, "Connection", "keep-alive");
@@ -143,7 +201,12 @@ esp_err_t OtaHelper::httpGetHandler(httpd_req_t *req) {
 esp_err_t OtaHelper::httpPostHandler(httpd_req_t *req) {
   OtaHelper *_this = (OtaHelper *)req->user_ctx;
 
+  if (!_this->handleAuthentication(req)) {
+    return ESP_FAIL;
+  }
+
   httpd_resp_set_status(req, HTTPD_500); // Assume failure, change later on success.
+  httpd_resp_set_hdr(req, "Connection", "keep-alive");
 
   // Firmware or spiffs
   char hdr_value[255] = {0};

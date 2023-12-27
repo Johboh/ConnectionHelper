@@ -25,7 +25,7 @@ const char TAG[] = "OtaHelper";
  * - ArduinoOTA (called espota in Platform I/O), using Platform I/O, Arduino IDE or stand alone tools.
  *   - supports authentication
  * - HTTP web interface via http://<device-ip>:<port-number>/
- *   - supports authentication
+ *   - supports authentication (Basic, not secure)
  * - Using URI via remote HTTP server, invoked by the device itself.
  */
 class OtaHelper {
@@ -63,7 +63,15 @@ public:
     std::string id = "";
     bool enabled = true;
     uint16_t http_port = 81;
-    Credentials credentials; // Set username to non empty string to enable authentication.
+    /**
+     * Set username to non empty string to enable authentication.
+     * Note: Only Basic authentication is supported.
+     * Note: You might need to set
+     * https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/kconfig.html#config-httpd-max-req-hdr-len
+     * to 1024 or higher in menuconfig in case of "431 Request Header Fields Too Large - Header fields are too long for
+     * server to interpret" errors.
+     */
+    Credentials credentials;
   };
 
   enum class RollbackStrategy {
@@ -150,6 +158,12 @@ private: // OTA (generic)
 private: // OTA via local HTTP webserver / web UI
   bool startWebserver();
   int fillBuffer(httpd_req_t *req, char *buffer, size_t buffer_size);
+
+  void setNotAuthenticatedResonse(httpd_req_t *req);
+
+  // Return true if user is authenticated, or if no authentication is required.
+  // Will set proper headers. If this returns false, caller should not continue or set anything.
+  bool handleAuthentication(httpd_req_t *req);
 
   static esp_err_t httpGetHandler(httpd_req_t *req);
   static esp_err_t httpPostHandler(httpd_req_t *req);
