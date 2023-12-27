@@ -27,7 +27,9 @@ const char TAG[] = "OtaHelper";
  * - HTTP web interface via http://<device-ip>:<port-number>/
  *   - supports authentication (Basic, not secure)
  *   - Can also be used as in script to upload firmware and spiffs directly by doing a file upload using POST to the
- * same URI and setting the "X-Flash-Mode" header to either "firmware" or "spiffs".
+ * same URI and setting the "X-Flash-Mode" header to either "firmware" or "spiffs". Like this:
+ *   curl -X POST -H "X-Flash-Mode: firmware" -H "Content-Type: application/octet-stream" \
+ *        --data-binary "@/path/to/firmware.bin" http://<device-ip>:<port-number>/
  * - Using URI via remote HTTP server, invoked by the device itself.
  */
 class OtaHelper {
