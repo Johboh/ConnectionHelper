@@ -5,7 +5,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        example: [examples/Simple/WifiAndOta.ino]
+        example: [examples/arduino/WifiAndOta.ino]
 
     steps:
       - uses: actions/checkout@v3

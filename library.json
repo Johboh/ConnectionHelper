@@ -18,7 +18,7 @@
     "examples": [
       {
           "name": "WifiAndOta",
-          "base": "examples/Simple",
+          "base": "examples/arduino",
           "files": ["WifiAndOta.ino"]
       }
     ],
