@@ -1,5 +1,6 @@
 #include "OtaHelper.h"
 #include "MD5Builder.h"
+#include <esp_app_format.h>
 #include <esp_log.h>
 #include <esp_ota_ops.h>
 #include <esp_tls_crypto.h>
@@ -255,7 +256,7 @@ esp_err_t OtaHelper::httpPostHandler(httpd_req_t *req) {
 
   httpd_resp_set_status(req, HTTPD_200);
   httpd_resp_send(req, NULL, 0);
-  vTaskDelay(2000 / portTICK_RATE_MS);
+  vTaskDelay(2000 / portTICK_PERIOD_MS);
   esp_restart();
   return ESP_OK;
 }
@@ -940,7 +941,7 @@ void OtaHelper::rollbackWatcherTask(void *pvParameters) {
   OtaHelper *_this = (OtaHelper *)pvParameters;
 
   // Wait just slightly to give things time.
-  vTaskDelay(5000 / portTICK_RATE_MS);
+  vTaskDelay(5000 / portTICK_PERIOD_MS);
 
   auto wait_bits = _this->_rollback_bits_to_wait_for;
   if (wait_bits > 0) {
