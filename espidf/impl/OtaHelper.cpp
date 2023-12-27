@@ -235,6 +235,12 @@ esp_err_t OtaHelper::httpPostHandler(httpd_req_t *req) {
   }
   ESP_LOGI(OtaHelperLog::TAG, "OTA started via HTTP with target partition: %s", partition->label);
 
+  if (req->content_len == 0) {
+    ESP_LOGE(OtaHelperLog::TAG, "No content received");
+    httpd_resp_send(req, "No content received", HTTPD_RESP_USE_STRLEN);
+    return ESP_FAIL;
+  }
+
   std::string md5hash = ""; // No hash
   if (!_this->writeStreamToPartition(partition, flash_mode, req->content_len, md5hash,
                                      [&_this, req](char *buffer, size_t buffer_size, size_t total_bytes_left) {
