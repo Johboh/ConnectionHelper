@@ -1,5 +1,8 @@
 name: Push to PlatformIO registry
 on:
+  release:
+    types: [created]
+
   workflow_run:
     workflows: ["PlatformIO CI"]
     types: completed

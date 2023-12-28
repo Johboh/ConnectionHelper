@@ -1,5 +1,8 @@
 name: Push to Espressif Component Service
 on:
+  release:
+    types: [created]
+
   workflow_run:
     workflows: ["ESP-IDF CI"]
     types: completed
