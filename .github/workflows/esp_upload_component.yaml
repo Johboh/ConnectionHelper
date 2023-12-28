@@ -6,10 +6,14 @@ on:
   workflow_run:
     workflows: ["ESP-IDF CI"]
     types: completed
+    branch:
+      - main
 jobs:
   upload_components:
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: |
+      github.event_name == 'release' &&
+      github.event.workflow_run.conclusion == 'success'
     steps:
       - uses: actions/checkout@master
       - name: Upload component to component registry
