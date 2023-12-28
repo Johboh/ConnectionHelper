@@ -5,7 +5,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        example: [examples/arduino/WifiAndOta.ino]
+        example:
+          - name: simple
 
     steps:
       - uses: actions/checkout@v3
@@ -24,4 +25,4 @@ jobs:
       - name: Build PlatformIO examples
         run: pio ci --lib="." --board=lolin_s2_mini --board=lolin_c3_mini --board="d1_mini"
         env:
-          PLATFORMIO_CI_SRC: ${{ matrix.example }}
+          PLATFORMIO_CI_SRC: examples/arduino/${{ matrix.example.name }}

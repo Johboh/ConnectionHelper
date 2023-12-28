@@ -1,7 +1,6 @@
 # ConnectionHelper
 [![Platform I/O CI](https://github.com/Johboh/ConnectionHelper/actions/workflows/platformio.yaml/badge.svg)](https://registry.platformio.org/libraries/johboh/ConnectionHelper)
-[![ESP-IDF v5 CI](https://github.com/Johboh/ConnectionHelper/actions/workflows/espidf5.yaml/badge.svg)](https://github.com/Johboh/ConnectionHelper/actions/workflows/espidf5.yaml)
-[![ESP-IDF v4 CI](https://github.com/Johboh/ConnectionHelper/actions/workflows/espidf4.yaml/badge.svg)](https://github.com/Johboh/ConnectionHelper/actions/workflows/espidf4.yaml)
+[![ESP-IDF v5](https://github.com/Johboh/ConnectionHelper/actions/workflows/espidf.yaml/badge.svg)](https://github.com/Johboh/ConnectionHelper/actions/workflows/espidf.yaml)
 [![ESP-IDF Component Upload](https://github.com/Johboh/ConnectionHelper/actions/workflows/esp_upload_component.yaml/badge.svg)](https://components.espressif.com/components/johboh/connectionhelper)
 [![GitHub release](https://img.shields.io/github/release/Johboh/ConnectionHelper.svg)](https://github.com/Johboh/ConnectionHelper/releases)
 
@@ -35,8 +34,8 @@ dependencies:
 ```
 
 ### Example
-- [Arduino framework](examples/arduino/WifiAndOta.ino)
-- [ESP-IDF framework](examples/espidf/main/main.cpp)
+- [Arduino framework](examples/arduino/simple/WifiAndOta.ino)
+- [ESP-IDF framework](examples/espidf/simple/main/main.cpp)
 
 ### Parition table
 You need to have two app partitions in your parition table to be able to swap between otas. This is an example:
