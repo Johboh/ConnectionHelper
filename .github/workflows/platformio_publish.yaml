@@ -16,6 +16,6 @@ jobs:
         run: pip install --upgrade platformio
 
       - name: Publish PlatformIO library
-        run: pio pkg publish -owner johboh --no-notify --no-interactive
+        run: pio pkg publish --owner johboh --no-notify --no-interactive
         env:
           PLATFORMIO_AUTH_TOKEN: ${{ secrets.PLATFORMIO_AUTH_TOKEN }}
