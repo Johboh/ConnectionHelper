@@ -37,7 +37,7 @@ dependencies:
 - [ESP-IDF framework](examples/espidf/simple/main/main.cpp)
 
 ### Parition table
-You need to have two app partitions in your parition table to be able to swap between otas. This is an example:
+You need to have two app partitions in your parition table to be able to swap between otas, as well as the `otadata` section. This is an example for a 4MB flash:
 ```
 # Name,   Type,  SubType, Offset,          Size, Flags
 nvs,      data,      nvs,       ,           16K
