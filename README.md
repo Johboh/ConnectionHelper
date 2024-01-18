@@ -16,6 +16,7 @@ I found myself repeating the WiFI and OTA setup in all my projects so I made a r
 #### ESP-IDF framework
 - ArduinoOTA (using the Arduino IDE, Platform I/O and using `upload_protocol = espota` or using the esp IDF command line options, `espota`)
 - Upload via Web UI
+  - And via command line. Example: `curl -X POST -H "X-Flash-Mode: firmware" -H "Content-Type: application/octet-stream" --data-binary "@/path/to/firmware.bin" http://<device-ip>:<port-number>/`
 - Upload from URI (client driven).
 
 ### Installation
