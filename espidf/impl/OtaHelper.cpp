@@ -40,8 +40,9 @@
 // Public API
 // #########################################################################
 
-OtaHelper::OtaHelper(Configuration configuration, CrtBundleAttach crt_bundle_attach)
-    : _configuration(configuration), _crt_bundle_attach(crt_bundle_attach) {
+OtaHelper::OtaHelper(Configuration configuration, CrtBundleAttach crt_bundle_attach,
+                     OtaStatusCallback ota_status_callback)
+    : _configuration(configuration), _crt_bundle_attach(crt_bundle_attach), _ota_status_callback(ota_status_callback) {
   _rollback_event_group = xEventGroupCreate();
 }
 
@@ -94,11 +95,8 @@ bool OtaHelper::start() {
     xTaskCreate(arduinoOtaUdpServerTask, "arduino_udp", 4096, this, 5, NULL);
   }
 
-  if (_configuration.web_ota.enabled) {
-    return startWebserver();
-  } else {
-    return true;
-  }
+  bool success = !_configuration.web_ota.enabled || startWebserver();
+  return success;
 }
 
 void OtaHelper::cancelRollback() {
@@ -123,9 +121,16 @@ bool OtaHelper::updateFrom(std::string &url, FlashMode flash_mode, std::string m
     return false;
   }
 
+  reportStatus(OtaStatus::UPDATE_STARTED);
   ESP_LOGI(OtaHelperLog::TAG, "OTA started via remoteHTTP with target partition: %s", partition->label);
 
-  return downloadAndWriteToPartition(partition, flash_mode, url, md5_hash);
+  auto success = downloadAndWriteToPartition(partition, flash_mode, url, md5_hash);
+  if (success) {
+    reportStatus(OtaStatus::UPDATE_COMPLETED);
+  } else {
+    reportStatus(OtaStatus::UPDATE_FAILED);
+  }
+  return success;
 }
 
 // #########################################################################
@@ -235,11 +240,14 @@ esp_err_t OtaHelper::httpPostHandler(httpd_req_t *req) {
     httpd_resp_send(req, "Unable to find suitable partition", HTTPD_RESP_USE_STRLEN);
     return ESP_FAIL;
   }
+
+  reportStatus(OtaStatus::UPDATE_STARTED);
   ESP_LOGI(OtaHelperLog::TAG, "OTA started via HTTP with target partition: %s", partition->label);
 
   if (req->content_len == 0) {
     ESP_LOGE(OtaHelperLog::TAG, "No content received");
     httpd_resp_send(req, "No content received", HTTPD_RESP_USE_STRLEN);
+    reportStatus(OtaStatus::UPDATE_FAILED);
     return ESP_FAIL;
   }
 
@@ -250,9 +258,11 @@ esp_err_t OtaHelper::httpPostHandler(httpd_req_t *req) {
                                      })) {
     ESP_LOGE(OtaHelperLog::TAG, "Failed to write stream to partition");
     httpd_resp_send(req, "Failed to write stream to partition", HTTPD_RESP_USE_STRLEN);
+    reportStatus(OtaStatus::UPDATE_FAILED);
     return ESP_FAIL;
   }
 
+  reportStatus(OtaStatus::UPDATE_COMPLETED);
   ESP_LOGI(OtaHelperLog::TAG, "HTTP OTA complete, rebooting...");
 
   httpd_resp_set_status(req, HTTPD_200);
@@ -567,14 +577,22 @@ void OtaHelper::arduinoOtaUdpServerTask(void *pvParameters) {
 
         // Handle OTA (if not waiting for auth)
         if (handshake_packet && !waiting_for_auth) {
-          _this->connectToHostForArduino(*handshake_packet, addr_str);
+          reportStatus(OtaStatus::UPDATE_STARTED);
+          auto result = _this->connectToHostForArduino(*handshake_packet, addr_str);
+          if (result) {
+            reportStatus(OtaStatus::UPDATE_COMPLETED);
+            vTaskDelay(2000 / portTICK_PERIOD_MS);
+            esp_restart();
+          } else {
+            reportStatus(OtaStatus::UPDATE_FAILED);
+          }
           break; // Fail or OK, restart UDP.
         }
       }
     }
 
     if (sock != -1) {
-      ESP_LOGE(OtaHelperLog::TAG, "Shutting down UDP socket and restarting...");
+      ESP_LOGE(OtaHelperLog::TAG, "Shutting down UDP and restarting socket...");
       shutdown(sock, 0);
       close(sock);
     }
@@ -968,6 +986,12 @@ void OtaHelper::rollbackWatcherTask(void *pvParameters) {
 // #########################################################################
 // Generic utils
 // #########################################################################
+
+void OtaHelper::reportStatus(OtaStatus status) {
+  if (_ota_status_callback) {
+    _ota_status_callback(status);
+  }
+}
 
 bool OtaHelper::reportOnError(esp_err_t err, const char *msg) {
   if (err != ESP_OK) {

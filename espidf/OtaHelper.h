@@ -111,14 +111,28 @@ public:
     RollbackStrategy rollback_strategy = RollbackStrategy::AUTO;
   };
 
+  enum class OtaStatus {
+    UPDATE_STARTED,   // Firmware update has started.
+    UPDATE_FAILED,    // Firmare update has failed.
+    UPDATE_COMPLETED, // Firmware update has completed.
+  };
+
+  using OtaStatusCallback = std::function<void(void)>;
+
   /**
    * @brief Construct a new Ota Helper.
    *
    * To set log level for this object, use: esp_log_level_set(OtaHelperLog::TAG, ESP_LOG_*);
    *
    * @param configuration configuration for the OTA services and rollback strategy.
+   * @param crt_bundle_attach CRT Bundle Attach for Ardunio or ESP-IDF from MDTLS, to support TLS/HTTPS. See definition
+   * of CrtBundleAttach.
+   * @param ota_status_callback optional callback for reciving OTA status. Do not do anything critical/blocking in these
+   * callbacks as they will delay/block the OTA process.
+   *
    */
-  OtaHelper(Configuration configuration, CrtBundleAttach crt_bundle_attach = nullptr);
+  OtaHelper(Configuration configuration, CrtBundleAttach crt_bundle_attach = nullptr,
+            OtaStatusCallback ota_status_callback = {});
 
 public:
   /**
@@ -143,11 +157,12 @@ public:
   /**
    * @brief Try to update firmware/spiffs from the given URL.
    * WiFi needs to be established first.
+   * Will not restart/reboot on success or failure. Caller is responsible to reboot on sucess (or at a convinient time).
    *
    * @param url url to update from. This should be the bin file to update with.
    * @param flash_mode flash mode to use.
    * @param md5_hash 32 string character MD5 hash to validate written firmware/spiffs against. Empty to not validate.
-   * @return true if successful (but will also reboot), so only the false case is useful.
+   * @return true if successful.
    */
   bool updateFrom(std::string &url, FlashMode flash_mode, std::string md5_hash = "");
 
@@ -208,6 +223,7 @@ private: // Rollback
   static void rollbackWatcherTask(void *pvParameters);
 
 private: // Generic utils
+  void reportStatus(OtaStatus status);
   bool reportOnError(esp_err_t err, const char *msg);
   void replaceAll(std::string &s, const std::string &search, const std::string &replace);
   std::string trim(const std::string &str);
@@ -217,6 +233,7 @@ private:
   CrtBundleAttach _crt_bundle_attach;
   uint8_t _rollback_bits_to_wait_for;
   EventGroupHandle_t _rollback_event_group;
+  OtaStatusCallback _ota_status_callback;
 };
 
 #endif // __OTA_HELPER_H__
