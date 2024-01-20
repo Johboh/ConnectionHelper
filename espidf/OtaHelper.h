@@ -117,7 +117,7 @@ public:
     UPDATE_COMPLETED, // Firmware update has completed.
   };
 
-  using OtaStatusCallback = std::function<void(void)>;
+  using OtaStatusCallback = std::function<void(OtaStatus)>;
 
   /**
    * @brief Construct a new Ota Helper.
