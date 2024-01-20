@@ -241,13 +241,13 @@ esp_err_t OtaHelper::httpPostHandler(httpd_req_t *req) {
     return ESP_FAIL;
   }
 
-  reportStatus(OtaStatus::UPDATE_STARTED);
+  _this->reportStatus(OtaStatus::UPDATE_STARTED);
   ESP_LOGI(OtaHelperLog::TAG, "OTA started via HTTP with target partition: %s", partition->label);
 
   if (req->content_len == 0) {
     ESP_LOGE(OtaHelperLog::TAG, "No content received");
     httpd_resp_send(req, "No content received", HTTPD_RESP_USE_STRLEN);
-    reportStatus(OtaStatus::UPDATE_FAILED);
+    _this->reportStatus(OtaStatus::UPDATE_FAILED);
     return ESP_FAIL;
   }
 
@@ -258,11 +258,11 @@ esp_err_t OtaHelper::httpPostHandler(httpd_req_t *req) {
                                      })) {
     ESP_LOGE(OtaHelperLog::TAG, "Failed to write stream to partition");
     httpd_resp_send(req, "Failed to write stream to partition", HTTPD_RESP_USE_STRLEN);
-    reportStatus(OtaStatus::UPDATE_FAILED);
+    _this->reportStatus(OtaStatus::UPDATE_FAILED);
     return ESP_FAIL;
   }
 
-  reportStatus(OtaStatus::UPDATE_COMPLETED);
+  _this->reportStatus(OtaStatus::UPDATE_COMPLETED);
   ESP_LOGI(OtaHelperLog::TAG, "HTTP OTA complete, rebooting...");
 
   httpd_resp_set_status(req, HTTPD_200);
@@ -577,14 +577,14 @@ void OtaHelper::arduinoOtaUdpServerTask(void *pvParameters) {
 
         // Handle OTA (if not waiting for auth)
         if (handshake_packet && !waiting_for_auth) {
-          reportStatus(OtaStatus::UPDATE_STARTED);
+          _this->reportStatus(OtaStatus::UPDATE_STARTED);
           auto result = _this->connectToHostForArduino(*handshake_packet, addr_str);
           if (result) {
-            reportStatus(OtaStatus::UPDATE_COMPLETED);
+            _this->reportStatus(OtaStatus::UPDATE_COMPLETED);
             vTaskDelay(2000 / portTICK_PERIOD_MS);
             esp_restart();
           } else {
-            reportStatus(OtaStatus::UPDATE_FAILED);
+            _this->reportStatus(OtaStatus::UPDATE_FAILED);
           }
           break; // Fail or OK, restart UDP.
         }
