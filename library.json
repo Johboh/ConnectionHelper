@@ -17,9 +17,14 @@
     "platforms": ["espressif8266", "espressif32"],
     "examples": [
       {
-          "name": "WifiAndOta",
-          "base": "examples/arduino",
+          "name": "Arduino simple",
+          "base": "examples/arduino/simple",
           "files": ["WifiAndOta.ino"]
+      },
+      {
+        "name": "ESP-IDF simple",
+        "base": "examples/espidf/simple/main",
+        "files": ["main.cpp"]
       }
     ],
     "build": {
