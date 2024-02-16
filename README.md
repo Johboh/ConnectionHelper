@@ -2,6 +2,7 @@
 [![Platform I/O CI](https://github.com/Johboh/ConnectionHelper/actions/workflows/platformio.yaml/badge.svg)](https://registry.platformio.org/libraries/johboh/ConnectionHelper)
 [![ESP-IDF](https://github.com/Johboh/ConnectionHelper/actions/workflows/espidf.yaml/badge.svg)](https://github.com/Johboh/ConnectionHelper/actions/workflows/espidf.yaml)
 [![GitHub release](https://img.shields.io/github/release/Johboh/ConnectionHelper.svg)](https://github.com/Johboh/ConnectionHelper/releases)
+[![Clang-format](https://github.com/Johboh/ConnectionHelper/actions/workflows/clang-format.yaml/badge.svg)](https://github.com/Johboh/ConnectionHelper)
 
 Arduino (using Arduino IDE or Platform I/O) and ESP-IDF (using Espressif IoT Development Framework or Platform I/O) compatible library for setting up WiFi and OTA (Over The Air)
 
