@@ -1,37 +1,37 @@
 # ConnectionHelper
-[![Platform I/O CI](https://github.com/Johboh/ConnectionHelper/actions/workflows/platformio.yaml/badge.svg)](https://registry.platformio.org/libraries/johboh/ConnectionHelper)
+[![PlatformIO CI](https://github.com/Johboh/ConnectionHelper/actions/workflows/platformio.yaml/badge.svg)](https://registry.platformio.org/libraries/johboh/ConnectionHelper)
 [![ESP-IDF](https://github.com/Johboh/ConnectionHelper/actions/workflows/espidf.yaml/badge.svg)](https://github.com/Johboh/ConnectionHelper/actions/workflows/espidf.yaml)
 [![GitHub release](https://img.shields.io/github/release/Johboh/ConnectionHelper.svg)](https://github.com/Johboh/ConnectionHelper/releases)
 [![Clang-format](https://github.com/Johboh/ConnectionHelper/actions/workflows/clang-format.yaml/badge.svg)](https://github.com/Johboh/ConnectionHelper)
 
-Arduino (using Arduino IDE or Platform I/O) and ESP-IDF (using Espressif IoT Development Framework or Platform I/O) compatible library for setting up WiFi and OTA (Over The Air)
+Arduino (using Arduino IDE or PlatformIO) and ESP-IDF (using Espressif IoT Development Framework or PlatformIO) compatible library for setting up WiFi and OTA (Over The Air)
 
 I found myself repeating the WiFI and OTA setup in all my projects so I made a reusable library for it.
 
 ### OTA support
 
 #### Arduino framework
-- ArduinoOTA (using the Arduino IDE, Platform I/O and using `upload_protocol = espota` or using the esp IDF command line options, `espota`.)
+- ArduinoOTA (using the Arduino IDE, PlatformIO and using `upload_protocol = espota` or using the esp IDF command line options, `espota`.)
 - Upload via Web UI using the [ElegantOTA](https://github.com/ayushsharma82/ElegantOTA) web UI provided update tool.
 
 #### ESP-IDF framework
-- ArduinoOTA (using the Arduino IDE, Platform I/O and using `upload_protocol = espota` or using the esp IDF command line options, `espota`)
+- ArduinoOTA (using the Arduino IDE, PlatformIO and using `upload_protocol = espota` or using the esp IDF command line options, `espota`)
 - Upload via Web UI
   - And via command line. Example: `curl -X POST -H "X-Flash-Mode: firmware" -H "Content-Type: application/octet-stream" --data-binary "@/path/to/firmware.bin" http://<device-ip>:<port-number>/`
 - Upload from URI (client driven).
 
 ### Installation
-#### Platform I/O (Arduino or ESP-IDF):
+#### PlatformIO (Arduino or ESP-IDF):
 Add the following to `libs_deps`:
 ```
-   Johboh/ConnectionHelper
+   Johboh/ConnectionHelper@^2.0.3
 ```
 #### Espressif IoT Development Framework:
 In your existing `idf_component.yml` or in a new `idf_component.yml` next to your main component:
 ```
 dependencies:
   johboh/ConnectionHelper:
-    version: ">=2.0.2"
+    version: ">=2.0.3"
 ```
 
 ### Example

@@ -24,7 +24,7 @@ const char TAG[] = "OtaHelper";
  * @brief Create a OTA (Over The Air) helper
  *
  * Supports upload of firmware and spiffs via:
- * - ArduinoOTA (called espota in Platform I/O), using Platform I/O, Arduino IDE or stand alone tools.
+ * - ArduinoOTA (called espota in PlatformIO), using PlatformIO, Arduino IDE or stand alone tools.
  *   - supports authentication
  * - HTTP web interface via http://<device-ip>:<port-number>/
  *   - supports authentication (Basic, not secure)
@@ -48,7 +48,7 @@ public:
   typedef esp_err_t (*CrtBundleAttach)(void *conf);
 
   /**
-   * @brief Configuration for Arduino OTA (called espota in Platform I/O).
+   * @brief Configuration for Arduino OTA (called espota in PlatformIO).
    */
   struct ArduinoOta {
     bool enabled = true;
@@ -80,7 +80,7 @@ public:
      * to 1024 or higher in menuconfig in case of "431 Request Header Fields Too Large - Header fields are too long for
      * server to interpret" errors.
      */
-    Credentials credentials;
+    Credentials credentials = {};
   };
 
   enum class RollbackStrategy {
@@ -97,8 +97,8 @@ public:
   };
 
   struct Configuration {
-    WebOta web_ota;
-    ArduinoOta arduino_ota;
+    WebOta web_ota = {};
+    ArduinoOta arduino_ota = {};
     /**
      * @brief Rollback must be enabled in menuconfig where
      * https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/kconfig.html#config-bootloader-app-rollback-enable
