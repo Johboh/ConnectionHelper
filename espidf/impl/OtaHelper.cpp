@@ -275,6 +275,8 @@ esp_err_t OtaHelper::httpPostHandler(httpd_req_t *req) {
 bool OtaHelper::startWebserver() {
   httpd_handle_t server = NULL;
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+  // Must use unique unique internal UDP port in case of several HTTP servers on this host. OK to wrap.
+  config.ctrl_port = config.ctrl_port + _configuration.web_ota.http_port;
   config.server_port = _configuration.web_ota.http_port;
   config.lru_purge_enable = true;
 
