@@ -25,14 +25,14 @@ I found myself repeating the WiFI and OTA setup in all my projects so I made a r
 #### PlatformIO (Arduino or ESP-IDF):
 Add the following to `libs_deps`:
 ```
-   Johboh/ConnectionHelper@^2.0.4
+   Johboh/ConnectionHelper@^2.0.5
 ```
 #### Espressif IoT Development Framework:
 In your existing `idf_component.yml` or in a new `idf_component.yml` next to your main component:
 ```
 dependencies:
   johboh/ConnectionHelper:
-    version: ">=2.0.4"
+    version: ">=2.0.5"
 ```
 
 ### Example
