@@ -8,7 +8,6 @@
 
 namespace LogHelper {
 static inline void log(const char *tag, const esp_log_level_t log_level, std::string &message) {
-  va_list args;
   switch (log_level) {
   case ESP_LOG_ERROR:
     ESP_LOGE(tag, "%s", message.c_str());

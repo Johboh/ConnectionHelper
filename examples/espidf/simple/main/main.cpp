@@ -11,7 +11,7 @@ const char hostname[] = "my-hostname";
 const char wifi_ssid[] = "my-ssid";
 const char wifi_password[] = "my-password";
 
-#define TAG "example"
+#define LOG_TAG "example"
 
 #define PIN_LED GPIO_NUM_14
 
@@ -26,14 +26,15 @@ OtaHelper::Configuration ota_configuration = {
 OtaHelper _ota_helper(ota_configuration);
 
 WiFiHelper _wifi_helper(
-    hostname, []() { ESP_LOGI(TAG, "on connected callback"); }, []() { ESP_LOGI(TAG, "on disconnected callback"); });
+    hostname, []() { ESP_LOGI(LOG_TAG, "on connected callback"); },
+    []() { ESP_LOGI(LOG_TAG, "on disconnected callback"); });
 
 void blinkAndSerialTask(void *pvParameters) {
   bool swap = false;
   while (1) {
     gpio_set_level(PIN_LED, swap);
     swap = !swap;
-    ESP_LOGI(TAG, "Hello");
+    ESP_LOGI(LOG_TAG, "Hello");
     vTaskDelay(1000 / portTICK_PERIOD_MS);
   }
 }
@@ -59,10 +60,10 @@ void app_main(void) {
   if (connected) {
     // Connected to WIFI, start OTA.
     if (!_ota_helper.start()) {
-      ESP_LOGE(TAG, "Failed to start OTA");
+      ESP_LOGE(LOG_TAG, "Failed to start OTA");
     }
   } else {
-    ESP_LOGE(TAG, "Failed to connect");
+    ESP_LOGE(LOG_TAG, "Failed to connect");
   }
 
   // Run forever.
