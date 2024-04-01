@@ -1,10 +1,15 @@
-#include "credentials.h"
 #include <OtaHelper.h>
 #include <WiFiHelper.h>
 #include <driver/gpio.h>
 #include <esp_log.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+
+// For this example only.
+// Suggest to not store credentials in version controlled files.
+const char hostname[] = "my-hostname";
+const char wifi_ssid[] = "my-ssid";
+const char wifi_password[] = "my-password";
 
 #define TAG "example"
 
@@ -46,7 +51,7 @@ void app_main(void) {
   // Connect to WIFI with 10s timeout.
   bool initialize_nvs = true;
   bool timeout_ms = 10000;
-  auto connected = _wifi_helper.connectToAp(wifi_ssid, wifi_password, hostname, initialize_nvs, timeout_ms);
+  auto connected = _wifi_helper.connectToAp(wifi_ssid, wifi_password, initialize_nvs, timeout_ms);
   if (connected) {
     // Connected to WIFI, start OTA.
     if (!_ota_helper.start()) {
