@@ -3,4 +3,4 @@
 /.build
 /.pio
 /out
-./src/impl/ota_html.h
+src/impl/ota_html.h
