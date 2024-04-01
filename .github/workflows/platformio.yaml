@@ -24,8 +24,8 @@ jobs:
       - name: Install PlatformIO Core
         run: pip install --upgrade platformio
 
-      - name: Re generate html
-        run: python binary_to_h.py html/ota.html src/ota_html.h
+      - name: Generate html
+        run: python binary_to_h.py html/ota.html src/impl/ota_html.h
 
       - name: Build PlatformIO examples
         run: pio ci --lib="." --board=lolin_s2_mini --board=lolin_c3_mini --project-option="build_unflags=-std=gnu++11" --project-option="build_flags=-std=gnu++17"

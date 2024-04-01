@@ -18,8 +18,8 @@ jobs:
       - name: Install PlatformIO Core
         run: pip install --upgrade platformio
 
-      - name: Re generate html
-        run: python binary_to_h.py html/ota.html src/ota_html.h
+      - name: Generate html
+        run: python binary_to_h.py html/ota.html src/impl/ota_html.h
 
       - name: Publish PlatformIO library
         run: pio pkg publish --owner johboh --no-notify --no-interactive
