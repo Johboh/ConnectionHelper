@@ -1,4 +1,5 @@
 #include "WiFiHelper.h"
+#include "LogHelper.h"
 #include <cstring>
 #include <esp_err.h>
 #include <esp_log.h>
@@ -20,7 +21,7 @@ void WiFiHelper::eventHandler(void *arg, esp_event_base_t event_base, int32_t ev
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
     esp_wifi_connect();
   } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-    ESP_LOGW(WiFiHelperLog::TAG, "WiFi disconnected");
+    _this->log(ESP_LOG_WARN, "WiFi disconnected");
 
     auto on_disconnected = _this->_on_disconnected;
     if (_this->_is_connected && on_disconnected != nullptr) {
@@ -29,13 +30,16 @@ void WiFiHelper::eventHandler(void *arg, esp_event_base_t event_base, int32_t ev
     _this->_is_connected = false;
 
     if (_this->_reconnect) {
-      ESP_LOGW(WiFiHelperLog::TAG, "Trying to reconnect...");
+      _this->log(ESP_LOG_WARN, "Trying to reconnect...");
       esp_wifi_connect();
     }
 
   } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
     ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
-    ESP_LOGI(WiFiHelperLog::TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
+    auto ipaddr = event->ip_info.ip;
+    _this->log(ESP_LOG_INFO, "got ip: " + std::to_string(esp_ip4_addr1(&ipaddr)) + "." +
+                                 std::to_string(esp_ip4_addr2(&ipaddr)) + "." + std::to_string(esp_ip4_addr3(&ipaddr)) +
+                                 "." + std::to_string(esp_ip4_addr4(&ipaddr)));
     memcpy(&_this->_ip_addr, &event->ip_info.ip, sizeof(esp_ip4_addr_t));
 
     xEventGroupSetBits(_this->_wifi_event_group, WIFI_CONNECTED_BIT);
@@ -108,7 +112,7 @@ bool WiFiHelper::connectToAp(const char *ssid, const char *password, bool initia
   if (!reportOnError(esp_wifi_start(), "failed to start wifi")) {
     return false;
   }
-  ESP_LOGI(WiFiHelperLog::TAG, "wifi_init_sta finished.");
+  log(ESP_LOG_INFO, "wifi_init_sta finished.");
 
   TickType_t xMaxBlockTime = timeout_ms / portTICK_PERIOD_MS;
   EventBits_t bits = xEventGroupWaitBits(_wifi_event_group, WIFI_CONNECTED_BIT, pdFALSE, pdFALSE, xMaxBlockTime);
@@ -116,10 +120,10 @@ bool WiFiHelper::connectToAp(const char *ssid, const char *password, bool initia
   /* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which event actually
    * happened. */
   if (bits & WIFI_CONNECTED_BIT) {
-    ESP_LOGI(WiFiHelperLog::TAG, "connected to AP with SSID: %s", ssid);
+    log(ESP_LOG_INFO, "connected to AP with SSID: " + std::string(ssid));
     return true;
   } else {
-    ESP_LOGE(WiFiHelperLog::TAG, "Unable to connect to AP, timeout.");
+    log(ESP_LOG_ERROR, "Unable to connect to AP, timeout.");
   }
 
   // On failure, cleanup.
@@ -139,21 +143,21 @@ void WiFiHelper::disconnect() {
 }
 
 bool WiFiHelper::initializeNVS() {
-  ESP_LOGI(WiFiHelperLog::TAG, "Initializing NVS");
+  log(ESP_LOG_INFO, "Initializing NVS");
   // Initialize NVS
 
   esp_err_t err = nvs_flash_init();
   if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-    ESP_LOGW(WiFiHelperLog::TAG, "Erasing NVS (%s)", esp_err_to_name(err));
+    log(ESP_LOG_WARN, "Erasing NVS: " + std::string(esp_err_to_name(err)));
     err = nvs_flash_erase();
     if (err != ESP_OK) {
-      ESP_LOGE(WiFiHelperLog::TAG, "Failed erase NVS (%s)", esp_err_to_name(err));
+      log(ESP_LOG_ERROR, "Failed erase NVS: " + std::string(esp_err_to_name(err)));
       return false;
     }
     err = nvs_flash_init();
   }
   if (err != ESP_OK) {
-    ESP_LOGE(WiFiHelperLog::TAG, "Failed to initialize NVS (%s)", esp_err_to_name(err));
+    log(ESP_LOG_ERROR, "Failed to initialize NVS: " + std::string(esp_err_to_name(err)));
     return false;
   }
   return true;
@@ -161,8 +165,18 @@ bool WiFiHelper::initializeNVS() {
 
 bool WiFiHelper::reportOnError(esp_err_t err, const char *msg) {
   if (err != ESP_OK) {
-    ESP_LOGE(WiFiHelperLog::TAG, "%s: %s", msg, esp_err_to_name(err));
+    log(ESP_LOG_ERROR, std::string(msg) + ": " + std::string(esp_err_to_name(err)));
     return false;
   }
   return true;
+}
+
+void WiFiHelper::log(const esp_log_level_t log_level, std::string message) {
+  if (_on_log.size() > 0) {
+    for (auto &on_log : _on_log) {
+      on_log(message, log_level);
+    }
+  } else {
+    LogHelper::log(WiFiHelperLog::TAG, log_level, message);
+  }
 }

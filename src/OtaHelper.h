@@ -5,6 +5,7 @@
 #include <esp_event.h>
 #include <esp_http_client.h>
 #include <esp_http_server.h>
+#include <esp_log.h>
 #include <esp_netif.h>
 #include <esp_partition.h>
 #include <freertos/FreeRTOS.h>
@@ -122,7 +123,8 @@ public:
   /**
    * @brief Construct a new Ota Helper.
    *
-   * To set log level for this object, use: esp_log_level_set(OtaHelperLog::TAG, ESP_LOG_*);
+   * If not using log callback (see addOnLog()), set log level for this object using:
+   * esp_log_level_set(OtaHelperLog::TAG, ESP_LOG_*);
    *
    * @param configuration configuration for the OTA services and rollback strategy.
    * @param crt_bundle_attach CRT Bundle Attach for Ardunio or ESP-IDF from MDTLS, to support TLS/HTTPS. See definition
@@ -141,7 +143,6 @@ public:
    * @return true if successfully started.
    */
   bool start();
-  void setup() { start(); }
 
   /**
    * @brief If the rollback strategy is MANUAL, call this to confirm that the new firmware is OK. Otherwise the previous
@@ -165,6 +166,21 @@ public:
    * @return true if successful.
    */
   bool updateFrom(std::string &url, FlashMode flash_mode, std::string md5_hash = "");
+
+  /**
+   * @brief Callback when this object want to log something.
+   *
+   * @param message the log message to log.
+   * @param log_level the severity of the log.
+   */
+  using OnLog = std::function<void(const std::string message, const esp_log_level_t log_level)>;
+
+  /**
+   * @brief Register log callback. Normally you can use esp_log_level_set(OtaHelperLog::TAG,
+   * ESP_LOG_*); to set the log level for this object, but if that is not possible or you want more control over
+   * logging, you can add a log callback. When set, the log level set using esp_log_level_set() is ignored.
+   */
+  void addOnLog(OnLog on_log) { _on_log.push_back(on_log); }
 
 private: // OTA (generic)
   bool
@@ -227,8 +243,10 @@ private: // Generic utils
   bool reportOnError(esp_err_t err, const char *msg);
   void replaceAll(std::string &s, const std::string &search, const std::string &replace);
   std::string trim(const std::string &str);
+  void log(const esp_log_level_t log_level, std::string message);
 
 private:
+  std::vector<OnLog> _on_log;
   Configuration _configuration;
   CrtBundleAttach _crt_bundle_attach;
   uint8_t _rollback_bits_to_wait_for;

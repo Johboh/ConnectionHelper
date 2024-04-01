@@ -2,6 +2,7 @@
 #define __WIFI_HELPER_H__
 
 #include <esp_event.h>
+#include <esp_log.h>
 #include <esp_netif.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/event_groups.h>
@@ -22,7 +23,8 @@ public:
   /**
    * @brief Construct a new WiFi Helper.
    *
-   * To set log level for this object, use: esp_log_level_set(WiFiHelperLog::TAG, ESP_LOG_*);
+   * If not using log callback (see addOnLog()), set log level for this object using:
+   * esp_log_level_set(WiFiHelperLog::TAG, ESP_LOG_*);
    *
    * @param device_hostname the name of this device. Will be used as hostname. From https://www.ietf.org/rfc/rfc1123.txt
    * "Each element of the hostname must be from 1 to 63 characters long
@@ -68,12 +70,28 @@ public:
    */
   bool isConnected() { return _is_connected; }
 
+  /**
+   * @brief Callback when this object want to log something.
+   *
+   * @param message the log message to log.
+   * @param log_level the severity of the log.
+   */
+  using OnLog = std::function<void(const std::string message, const esp_log_level_t log_level)>;
+
+  /**
+   * @brief Register log callback. Normally you can use esp_log_level_set(WiFiHelperLog::TAG,
+   * ESP_LOG_*); to set the log level for this object, but if that is not possible or you want more control over
+   * logging, you can add a log callback. When set, the log level set using esp_log_level_set() is ignored.
+   */
+  void addOnLog(OnLog on_log) { _on_log.push_back(on_log); }
+
 private:
   bool initializeNVS();
   bool reportOnError(esp_err_t err, const char *msg);
 
 private:
   static void eventHandler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
+  void log(const esp_log_level_t log_level, std::string message);
 
 private:
   const char *_device_hostname;
@@ -83,6 +101,7 @@ private:
   bool _is_connected;
   esp_ip4_addr_t _ip_addr;
   esp_netif_t *_netif_sta;
+  std::vector<OnLog> _on_log;
   EventGroupHandle_t _wifi_event_group;
   std::function<void(void)> _on_connected;
   std::function<void(void)> _on_disconnected;

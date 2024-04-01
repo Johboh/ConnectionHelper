@@ -48,6 +48,10 @@ void app_main(void) {
   gpio_set_level(PIN_LED, 1);
   xTaskCreate(blinkAndSerialTask, "blinkAndSerialTask", 2048, NULL, 15, NULL);
 
+  // Set log levels.
+  esp_log_level_set(OtaHelperLog::TAG, ESP_LOG_INFO);
+  esp_log_level_set(WiFiHelperLog::TAG, ESP_LOG_INFO);
+
   // Connect to WIFI with 10s timeout.
   bool initialize_nvs = true;
   bool timeout_ms = 10000;

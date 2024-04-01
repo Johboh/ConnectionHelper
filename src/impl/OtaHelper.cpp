@@ -1,4 +1,5 @@
 #include "OtaHelper.h"
+#include "LogHelper.h"
 #include "MD5Builder.h"
 #include "ota_html.h"
 #include <esp_app_format.h>
@@ -55,40 +56,40 @@ bool OtaHelper::start() {
   // Username cleanup
   _configuration.web_ota.credentials.username = trim(_configuration.web_ota.credentials.username);
 
-  ESP_LOGI(OtaHelperLog::TAG, "Starting OtaHelper with the following configuration");
-  ESP_LOGI(OtaHelperLog::TAG, "  - Rollback Strategy: %s",
-           _configuration.rollback_strategy == RollbackStrategy::AUTO ? "AUTO" : "MANUAL");
+  log(ESP_LOG_INFO, "Starting OtaHelper with the following configuration");
+  log(ESP_LOG_INFO, "  - Rollback Strategy: " +
+                        std::string(_configuration.rollback_strategy == RollbackStrategy::AUTO ? "AUTO" : "MANUAL"));
 
-  ESP_LOGI(OtaHelperLog::TAG, "  - Web UI: %s", _configuration.web_ota.enabled ? "enabled" : "disabled");
+  log(ESP_LOG_INFO, "  - Web UI: " + std::string(_configuration.web_ota.enabled ? "enabled" : "disabled"));
   if (_configuration.web_ota.enabled) {
-    ESP_LOGI(OtaHelperLog::TAG, "    - http port : %d", _configuration.web_ota.http_port);
-    ESP_LOGI(OtaHelperLog::TAG, "    - id : %s", _configuration.web_ota.id.c_str());
+    log(ESP_LOG_INFO, "    - http port : " + std::to_string(_configuration.web_ota.http_port));
+    log(ESP_LOG_INFO, "    - id : " + _configuration.web_ota.id);
     auto username = _configuration.web_ota.credentials.username;
     if (!username.empty()) {
-      ESP_LOGI(OtaHelperLog::TAG, "    - username: %s", _configuration.web_ota.credentials.username.c_str());
+      log(ESP_LOG_INFO, "    - username: " + _configuration.web_ota.credentials.username);
     }
     _rollback_bits_to_wait_for += WEB_OTA_STARTED_BIT;
   }
 
-  ESP_LOGI(OtaHelperLog::TAG, "  - Arduino OTA: %s", _configuration.arduino_ota.enabled ? "enabled" : "disabled");
+  log(ESP_LOG_INFO, "  - Arduino OTA: " + std::string(_configuration.arduino_ota.enabled ? "enabled" : "disabled"));
   if (_configuration.arduino_ota.enabled) {
-    ESP_LOGI(OtaHelperLog::TAG, "    - udp listenting port : %d", _configuration.arduino_ota.udp_listenting_port);
+    log(ESP_LOG_INFO, "    - udp listenting port : " + std::to_string(_configuration.arduino_ota.udp_listenting_port));
     auto password = _configuration.arduino_ota.password;
     if (!password.empty()) {
-      ESP_LOGI(OtaHelperLog::TAG, "    - auth: enabled");
+      log(ESP_LOG_INFO, "    - auth: enabled");
     }
 
     _rollback_bits_to_wait_for += ARDINO_OTA_STARTED_BIT;
   }
 
-  ESP_LOGI(OtaHelperLog::TAG, "  - Remote URI download: enabled (always)");
+  log(ESP_LOG_INFO, "  - Remote URI download: enabled (always)");
 
   if (_configuration.rollback_strategy == RollbackStrategy::AUTO) {
     auto can_rollback = esp_ota_check_rollback_is_possible();
     if (can_rollback) {
       xTaskCreate(rollbackWatcherTask, "rollback", 4096, this, 5, NULL);
     } else {
-      ESP_LOGI(OtaHelperLog::TAG, "Not starting rollback watcher (either this is the only app, or other error)");
+      log(ESP_LOG_INFO, "Not starting rollback watcher (either this is the only app, or other error)");
     }
   }
 
@@ -102,10 +103,9 @@ bool OtaHelper::start() {
 
 void OtaHelper::cancelRollback() {
   if (!esp_ota_check_rollback_is_possible()) {
-    ESP_LOGW(OtaHelperLog::TAG,
-             "Rollback is not possible so no rollback to cancel (either this is the only app, or other error)");
+    ESP_LOGI(OtaHelperLog::TAG, "No rollback to cancel.");
   } else {
-    ESP_LOGI(OtaHelperLog::TAG, "Canceling rollback and accepting the new firmware (if firmware where written)");
+    log(ESP_LOG_INFO, "Canceling rollback and accepting the new firmware (if firmware where written)");
     esp_ota_mark_app_valid_cancel_rollback();
   }
 }
@@ -113,17 +113,17 @@ void OtaHelper::cancelRollback() {
 bool OtaHelper::updateFrom(std::string &url, FlashMode flash_mode, std::string md5_hash) {
   auto *partition = findPartition(flash_mode);
   if (partition == nullptr) {
-    ESP_LOGE(OtaHelperLog::TAG, "Unable to find partition suitable partition");
+    log(ESP_LOG_ERROR, "Unable to find partition suitable partition");
     return ESP_FAIL;
   }
 
   if (!md5_hash.empty() && md5_hash.length() != 32) {
-    ESP_LOGE(OtaHelperLog::TAG, "MD5 is not correct length. Expected length: 32, got %zu", md5_hash.length());
+    log(ESP_LOG_ERROR, "MD5 is not correct length. Expected length: 32, got " + std::to_string(md5_hash.length()));
     return false;
   }
 
   reportStatus(OtaStatus::UPDATE_STARTED);
-  ESP_LOGI(OtaHelperLog::TAG, "OTA started via remoteHTTP with target partition: %s", partition->label);
+  log(ESP_LOG_INFO, "OTA started via remoteHTTP with target partition: " + std::string(partition->label));
 
   auto success = downloadAndWriteToPartition(partition, flash_mode, url, md5_hash);
   if (success) {
@@ -155,7 +155,7 @@ bool OtaHelper::handleAuthentication(httpd_req_t *req) {
     char *authorization = (char *)malloc(authorization_len);
     esp_err_t err = httpd_req_get_hdr_value_str(req, AUTHORIZATION_HDR_KEY, authorization, authorization_len);
     if (err != ESP_OK) {
-      ESP_LOGE(OtaHelperLog::TAG, "Unable to get authorization header: %s", esp_err_to_name(err));
+      log(ESP_LOG_ERROR, "Unable to get authorization header: " + std::string(esp_err_to_name(err)));
       setNotAuthenticatedResonse(req);
       return false;
     }
@@ -171,13 +171,13 @@ bool OtaHelper::handleAuthentication(httpd_req_t *req) {
     std::string expected_authorization = "Basic " + std::string(buff);
 
     if (expected_authorization != std::string(authorization)) {
-      ESP_LOGW(OtaHelperLog::TAG, "Credentials does not match");
+      log(ESP_LOG_WARN, "Credentials does not match");
       setNotAuthenticatedResonse(req);
       return false;
     }
 
   } else {
-    ESP_LOGI(OtaHelperLog::TAG, "No credentials provided");
+    log(ESP_LOG_INFO, "No credentials provided");
     setNotAuthenticatedResonse(req);
     return false;
   }
@@ -216,7 +216,7 @@ esp_err_t OtaHelper::httpPostHandler(httpd_req_t *req) {
   char hdr_value[255] = {0};
   esp_err_t err = httpd_req_get_hdr_value_str(req, FLASH_MODE_HDR_KEY, hdr_value, 255);
   if (err != ESP_OK) {
-    ESP_LOGE(OtaHelperLog::TAG, "Unable to get flash mode (firmware or spiffs): %s", esp_err_to_name(err));
+    _this->log(ESP_LOG_ERROR, "Unable to get flash mode (firmware or spiffs): " + std::string(esp_err_to_name(err)));
     httpd_resp_send(req, "Unable to get flash mode (firmware or spiffs)", HTTPD_RESP_USE_STRLEN);
     return ESP_FAIL;
   }
@@ -227,23 +227,23 @@ esp_err_t OtaHelper::httpPostHandler(httpd_req_t *req) {
   } else if (strcmp(hdr_value, FLASH_MODE_SPIFFS_STR) == 0) {
     flash_mode = FlashMode::SPIFFS;
   } else {
-    ESP_LOGE(OtaHelperLog::TAG, "Invalid flash mode: %s", hdr_value);
+    _this->log(ESP_LOG_ERROR, "Invalid flash mode: " + std::string(hdr_value));
     httpd_resp_send(req, "Invalid flash mode", HTTPD_RESP_USE_STRLEN);
     return ESP_FAIL;
   }
 
   const esp_partition_t *partition = _this->findPartition(flash_mode);
   if (partition == nullptr) {
-    ESP_LOGE(OtaHelperLog::TAG, "Unable to find partition suitable partition");
+    _this->log(ESP_LOG_ERROR, "Unable to find partition suitable partition");
     httpd_resp_send(req, "Unable to find suitable partition", HTTPD_RESP_USE_STRLEN);
     return ESP_FAIL;
   }
 
   _this->reportStatus(OtaStatus::UPDATE_STARTED);
-  ESP_LOGI(OtaHelperLog::TAG, "OTA started via HTTP with target partition: %s", partition->label);
+  _this->log(ESP_LOG_INFO, "OTA started via HTTP with target partition: " + std::string(partition->label));
 
   if (req->content_len == 0) {
-    ESP_LOGE(OtaHelperLog::TAG, "No content received");
+    _this->log(ESP_LOG_ERROR, "No content received");
     httpd_resp_send(req, "No content received", HTTPD_RESP_USE_STRLEN);
     _this->reportStatus(OtaStatus::UPDATE_FAILED);
     return ESP_FAIL;
@@ -254,14 +254,14 @@ esp_err_t OtaHelper::httpPostHandler(httpd_req_t *req) {
                                      [&_this, req](char *buffer, size_t buffer_size, size_t total_bytes_left) {
                                        return _this->fillBuffer(req, buffer, buffer_size);
                                      })) {
-    ESP_LOGE(OtaHelperLog::TAG, "Failed to write stream to partition");
+    _this->log(ESP_LOG_ERROR, "Failed to write stream to partition");
     httpd_resp_send(req, "Failed to write stream to partition", HTTPD_RESP_USE_STRLEN);
     _this->reportStatus(OtaStatus::UPDATE_FAILED);
     return ESP_FAIL;
   }
 
   _this->reportStatus(OtaStatus::UPDATE_COMPLETED);
-  ESP_LOGI(OtaHelperLog::TAG, "HTTP OTA complete, rebooting...");
+  _this->log(ESP_LOG_INFO, "HTTP OTA complete, rebooting...");
 
   httpd_resp_set_status(req, HTTPD_200);
   httpd_resp_send(req, NULL, 0);
@@ -315,7 +315,7 @@ int OtaHelper::fillBuffer(httpd_req_t *req, char *buffer, size_t buffer_size) {
     int read = httpd_req_recv(req, buffer + total_read, buffer_size - total_read);
     if (read <= 0) {
       if (read == HTTPD_SOCK_ERR_TIMEOUT || read == HTTPD_SOCK_ERR_FAIL) {
-        ESP_LOGE(OtaHelperLog::TAG, "Failed to fill buffer, read zero and not complete.");
+        log(ESP_LOG_ERROR, "Failed to fill buffer, read zero and not complete.");
         return -1;
       } else {
         return total_read;
@@ -331,33 +331,35 @@ int OtaHelper::fillBuffer(httpd_req_t *req, char *buffer, size_t buffer_size) {
 // #########################################################################
 
 esp_err_t OtaHelper::httpEventHandler(esp_http_client_event_t *evt) {
+  OtaHelper *_this = (OtaHelper *)evt->user_data;
 
   switch (evt->event_id) {
   case HTTP_EVENT_ERROR:
-    ESP_LOGE(OtaHelperLog::TAG, "HTTP_EVENT_ERROR");
+    _this->log(ESP_LOG_ERROR, "HTTP_EVENT_ERROR");
     break;
   case HTTP_EVENT_ON_CONNECTED:
-    ESP_LOGI(OtaHelperLog::TAG, "HTTP_EVENT_ON_CONNECTED");
+    _this->log(ESP_LOG_INFO, "HTTP_EVENT_ON_CONNECTED");
     break;
   case HTTP_EVENT_HEADER_SENT:
-    ESP_LOGV(OtaHelperLog::TAG, "HTTP_EVENT_HEADER_SENT");
+    _this->log(ESP_LOG_VERBOSE, "HTTP_EVENT_HEADER_SENT");
     break;
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 1, 0)
   case HTTP_EVENT_REDIRECT:
-    ESP_LOGV(OtaHelperLog::TAG, "HTTP_EVENT_REDIRECT");
+    _this->log(ESP_LOG_VERBOSE, "HTTP_EVENT_REDIRECT");
     break;
 #endif
   case HTTP_EVENT_ON_HEADER:
-    ESP_LOGV(OtaHelperLog::TAG, "HTTP_EVENT_ON_HEADER, key=%s, value=%s", evt->header_key, evt->header_value);
+    _this->log(ESP_LOG_VERBOSE, "HTTP_EVENT_ON_HEADER, key=" + std::string(evt->header_key) +
+                                    ", value=" + std::string(evt->header_value));
     break;
   case HTTP_EVENT_ON_DATA:
-    ESP_LOGV(OtaHelperLog::TAG, "HTTP_EVENT_ON_DATA, len=%d", evt->data_len);
+    _this->log(ESP_LOG_VERBOSE, "HTTP_EVENT_ON_DATA, len=" + std::to_string(evt->data_len));
     break;
   case HTTP_EVENT_ON_FINISH:
-    ESP_LOGI(OtaHelperLog::TAG, "HTTP_EVENT_ON_FINISH");
+    _this->log(ESP_LOG_INFO, "HTTP_EVENT_ON_FINISH");
     break;
   case HTTP_EVENT_DISCONNECTED:
-    ESP_LOGI(OtaHelperLog::TAG, "HTTP_EVENT_DISCONNECTED");
+    _this->log(ESP_LOG_INFO, "HTTP_EVENT_DISCONNECTED");
     break;
   }
 
@@ -376,13 +378,13 @@ bool OtaHelper::downloadAndWriteToPartition(const esp_partition_t *partition, Fl
   config.buffer_size = SPI_FLASH_SEC_SIZE;
   if (_crt_bundle_attach) {
     config.crt_bundle_attach = _crt_bundle_attach;
-    ESP_LOGI(OtaHelperLog::TAG, "With TLS/HTTPS support");
+    log(ESP_LOG_INFO, "With TLS/HTTPS support");
   } else {
-    ESP_LOGI(OtaHelperLog::TAG, "Without TLS/HTTPS support");
+    log(ESP_LOG_INFO, "Without TLS/HTTPS support");
   }
   esp_http_client_handle_t client = esp_http_client_init(&config);
 
-  ESP_LOGI(OtaHelperLog::TAG, "Using URL %s", url.c_str());
+  log(ESP_LOG_INFO, "Using URL " + url);
   esp_http_client_set_method(client, HTTP_METHOD_GET);
   esp_http_client_set_header(client, "Accept", "*/*");
   esp_http_client_set_timeout_ms(client, HTTP_REMOTE_TIMEOUT_MS);
@@ -393,22 +395,14 @@ bool OtaHelper::downloadAndWriteToPartition(const esp_partition_t *partition, Fl
     esp_http_client_fetch_headers(client);
     auto status_code = esp_http_client_get_status_code(client);
     auto content_length = esp_http_client_get_content_length(client);
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 1, 0)
-    ESP_LOGI(OtaHelperLog::TAG, "HTTP status code: %d, content length: %lld", status_code, content_length);
-#else
-    ESP_LOGI(OtaHelperLog::TAG, "HTTP status code: %d, content length: %d", status_code, content_length);
-#endif
+    log(ESP_LOG_INFO,
+        "HTTP status code: " + std::to_string(status_code) + ", content length: " + std::to_string(content_length));
 
     if (status_code == 200) {
       uint32_t partition_size = partition->size;
       if (content_length > partition_size) {
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 1, 0)
-        ESP_LOGE(OtaHelperLog::TAG, "Content length %lld is larger than partition size %lud", content_length,
-                 partition_size);
-#else
-        ESP_LOGE(OtaHelperLog::TAG, "Content length %d is larger than partition size %d", content_length,
-                 partition_size);
-#endif
+        log(ESP_LOG_ERROR, "Content length " + std::to_string(content_length) + " is larger than partition size " +
+                               std::to_string(partition_size));
 
       } else {
         success = writeStreamToPartition(partition, flash_mode, content_length, md5hash,
@@ -417,12 +411,12 @@ bool OtaHelper::downloadAndWriteToPartition(const esp_partition_t *partition, Fl
                                          });
       }
     } else {
-      ESP_LOGE(OtaHelperLog::TAG, "Got non 200 status code: %d", status_code);
+      log(ESP_LOG_ERROR, "Got non 200 status code: " + std::to_string(status_code));
     }
 
   } else {
     const char *errstr = esp_err_to_name(r);
-    ESP_LOGE(OtaHelperLog::TAG, "Failed to open HTTP connection: %s", errstr);
+    log(ESP_LOG_ERROR, "Failed to open HTTP connection: " + std::string(errstr));
   }
 
   esp_http_client_close(client);
@@ -445,7 +439,7 @@ int OtaHelper::fillBuffer(esp_http_client_handle_t client, char *buffer, size_t 
       if (esp_http_client_is_complete_data_received(client)) {
         return total_read;
       } else {
-        ESP_LOGE(OtaHelperLog::TAG, "Failed to fill buffer, read zero and not complete.");
+        log(ESP_LOG_ERROR, "Failed to fill buffer, read zero and not complete.");
         return -1;
       }
     }
@@ -481,30 +475,30 @@ void OtaHelper::arduinoOtaUdpServerTask(void *pvParameters) {
 
     int sock = socket(AF_INET, SOCK_DGRAM, ip_protocol);
     if (sock < 0) {
-      ESP_LOGE(OtaHelperLog::TAG, "Unable to create UDP socket: errno %d", errno);
+      _this->log(ESP_LOG_ERROR, "Unable to create UDP socket: errno " + std::to_string(errno));
       break;
     }
-    ESP_LOGI(OtaHelperLog::TAG, "UDP socket created");
+    _this->log(ESP_LOG_INFO, "UDP socket created");
 
     int err = bind(sock, (struct sockaddr *)&dest_addr_ip4, sizeof(dest_addr_ip4));
     if (err < 0) {
-      ESP_LOGE(OtaHelperLog::TAG, "UDP socket unable to bind: errno %d", errno);
+      _this->log(ESP_LOG_ERROR, "UDP socket unable to bind: errno " + std::to_string(errno));
       break;
     }
-    ESP_LOGI(OtaHelperLog::TAG, "UDP socket bound, port %d", port);
+    _this->log(ESP_LOG_INFO, "UDP socket bound, port " + std::to_string(port));
     xEventGroupSetBits(_this->_rollback_event_group, ARDINO_OTA_STARTED_BIT);
 
     struct sockaddr_storage source_addr;
     socklen_t socklen = sizeof(source_addr);
 
     while (1) {
-      ESP_LOGI(OtaHelperLog::TAG, "waiting UDP packet...");
+      _this->log(ESP_LOG_INFO, "waiting UDP packet...");
       int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0, (struct sockaddr *)&source_addr, &socklen);
-      ESP_LOGV(OtaHelperLog::TAG, "Got UDP packet with length %d", len);
+      _this->log(ESP_LOG_VERBOSE, "Got UDP packet with length " + std::to_string(len));
 
       // Error occurred during receiving?
       if (len < 0) {
-        ESP_LOGE(OtaHelperLog::TAG, "UDP recvfrom failed: errno %d", errno);
+        _this->log(ESP_LOG_ERROR, "UDP recvfrom failed: errno " + std::to_string(errno));
         break;
       } else {
         std::string reply_string;
@@ -515,7 +509,7 @@ void OtaHelper::arduinoOtaUdpServerTask(void *pvParameters) {
         if (!waiting_for_auth) {
           handshake_packet = _this->parseHandshakeUdpPacket(rx_buffer, len);
           if (!handshake_packet) {
-            ESP_LOGE(OtaHelperLog::TAG, "Failed to parse handshake UDP packet");
+            _this->log(ESP_LOG_ERROR, "Failed to parse handshake UDP packet");
             break;
           }
 
@@ -537,7 +531,7 @@ void OtaHelper::arduinoOtaUdpServerTask(void *pvParameters) {
         } else {
           auth_packet = _this->parseAuthUdpPacket(rx_buffer, len);
           if (!auth_packet) {
-            ESP_LOGE(OtaHelperLog::TAG, "Failed to parse auth UDP packet");
+            _this->log(ESP_LOG_ERROR, "Failed to parse auth UDP packet");
             break;
           }
 
@@ -556,7 +550,7 @@ void OtaHelper::arduinoOtaUdpServerTask(void *pvParameters) {
           if (result == auth_packet->response) {
             reply_string = "OK";
           } else {
-            ESP_LOGW(OtaHelperLog::TAG, "Authentication Failed");
+            _this->log(ESP_LOG_WARN, "Authentication Failed");
             reply_string = "Authentication Failed";
           }
 
@@ -569,10 +563,10 @@ void OtaHelper::arduinoOtaUdpServerTask(void *pvParameters) {
         int err = sendto(sock, reply_string.c_str(), reply_string.size(), 0, (struct sockaddr *)&source_addr,
                          sizeof(source_addr));
         if (err < 0) {
-          ESP_LOGE(OtaHelperLog::TAG, "error occurred during sending UDP: errno %d", errno);
+          _this->log(ESP_LOG_ERROR, "error occurred during sending UDP: errno " + std::to_string(errno));
           break;
         } else {
-          ESP_LOGV(OtaHelperLog::TAG, "Sent UDP reply: %s", reply_string.c_str());
+          _this->log(ESP_LOG_VERBOSE, "Sent UDP reply: " + reply_string);
         }
 
         // Handle OTA (if not waiting for auth)
@@ -592,7 +586,7 @@ void OtaHelper::arduinoOtaUdpServerTask(void *pvParameters) {
     }
 
     if (sock != -1) {
-      ESP_LOGE(OtaHelperLog::TAG, "Shutting down UDP and restarting socket...");
+      _this->log(ESP_LOG_ERROR, "Shutting down UDP and restarting socket...");
       shutdown(sock, 0);
       close(sock);
     }
@@ -693,18 +687,18 @@ std::optional<OtaHelper::ArduinoAuthUpdate> OtaHelper::parseAuthUdpPacket(char *
 }
 
 bool OtaHelper::connectToHostForArduino(ArduinoOtaHandshake &update, char *host_ip) {
-  ESP_LOGV(OtaHelperLog::TAG, "Connecting to host %s", host_ip);
-  ESP_LOGV(OtaHelperLog::TAG, "host_port: %d", update.host_port);
-  ESP_LOGV(OtaHelperLog::TAG, "flash_mode: %d", (int)update.flash_mode);
-  ESP_LOGV(OtaHelperLog::TAG, "size: %lud", update.size);
-  ESP_LOGV(OtaHelperLog::TAG, "md5: %s", update.md5.c_str());
+  log(ESP_LOG_VERBOSE, "Connecting to host " + std::string(host_ip));
+  log(ESP_LOG_VERBOSE, "host_port: " + std::to_string(update.host_port));
+  log(ESP_LOG_VERBOSE, "flash_mode: " + std::to_string((int)update.flash_mode));
+  log(ESP_LOG_VERBOSE, "size: " + std::to_string(update.size));
+  log(ESP_LOG_VERBOSE, "md5: " + update.md5);
 
   const esp_partition_t *partition = findPartition(update.flash_mode);
   if (partition == nullptr) {
-    ESP_LOGE(OtaHelperLog::TAG, "Unable to find suitable partition");
+    log(ESP_LOG_ERROR, "Unable to find suitable partition");
     return ESP_FAIL;
   }
-  ESP_LOGI(OtaHelperLog::TAG, "OTA started via TCP with target partition: %s", partition->label);
+  log(ESP_LOG_INFO, "OTA started via TCP with target partition: " + std::string(partition->label));
 
   struct sockaddr_in dest_addr;
   inet_pton(AF_INET, host_ip, &dest_addr.sin_addr);
@@ -713,36 +707,37 @@ bool OtaHelper::connectToHostForArduino(ArduinoOtaHandshake &update, char *host_
 
   int sock = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
   if (sock < 0) {
-    ESP_LOGE(OtaHelperLog::TAG, "Unable to create TCP client socket: errno %d", errno);
+    log(ESP_LOG_ERROR, "Unable to create TCP client socket: errno " + std::to_string(errno));
     return false;
   }
-  ESP_LOGI(OtaHelperLog::TAG, "TCP client socket created, connecting to %s:%d", host_ip, update.host_port);
+  log(ESP_LOG_INFO,
+      "TCP client socket created, connecting to " + std::string(host_ip) + ":" + std::to_string(update.host_port));
 
   int err = connect(sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
   if (err != 0) {
-    ESP_LOGE(OtaHelperLog::TAG, "TCP client socket unable to connect: errno %d", errno);
+    log(ESP_LOG_ERROR, "TCP client socket unable to connect: errno " + std::to_string(errno));
     shutdown(sock, 0);
     close(sock);
     return false;
   }
-  ESP_LOGI(OtaHelperLog::TAG, "Successfully connected to host");
+  log(ESP_LOG_INFO, "Successfully connected to host");
 
   auto ok = writeStreamToPartition(partition, update.flash_mode, update.size, update.md5,
                                    [&](char *buffer, size_t buffer_size, size_t total_bytes_left) {
                                      return fillBuffer(sock, buffer, buffer_size, total_bytes_left);
                                    });
   if (!ok) {
-    ESP_LOGE(OtaHelperLog::TAG, "Failed to write stream to partition");
+    log(ESP_LOG_ERROR, "Failed to write stream to partition");
     shutdown(sock, 0);
     close(sock);
     return false;
   }
 
-  ESP_LOGI(OtaHelperLog::TAG, "TCP OTA complete, rebooting...");
+  log(ESP_LOG_INFO, "TCP OTA complete, rebooting...");
 
   err = send(sock, ESPOTA_SUCCESSFUL, strlen(ESPOTA_SUCCESSFUL), 0);
   if (err < 0) {
-    ESP_LOGE(OtaHelperLog::TAG, "Failed to ack TCP update, its fine.");
+    log(ESP_LOG_ERROR, "Failed to ack TCP update, its fine.");
   }
   return true;
 }
@@ -755,10 +750,10 @@ int OtaHelper::fillBuffer(int socket, char *buffer, size_t buffer_size, size_t t
   while (total_read < buffer_size) {
     int read = recv(socket, buffer + total_read, buffer_size - total_read, 0);
     if (read < 0) {
-      ESP_LOGE(OtaHelperLog::TAG, "Failed to fill buffer, read error.");
+      log(ESP_LOG_ERROR, "Failed to fill buffer, read error.");
       return -1;
     } else if (read == 0) {
-      ESP_LOGW(OtaHelperLog::TAG, "Connection closed by remote end.");
+      log(ESP_LOG_WARN, "Connection closed by remote end.");
       return total_read;
     } else {
       total_read += read;
@@ -766,12 +761,12 @@ int OtaHelper::fillBuffer(int socket, char *buffer, size_t buffer_size, size_t t
       auto bytes_filled = std::to_string(read);
       int err = send(socket, bytes_filled.c_str(), bytes_filled.size(), 0);
       if (err < 0) {
-        ESP_LOGE(OtaHelperLog::TAG, "Failed to ack when filling buffer.");
+        log(ESP_LOG_ERROR, "Failed to ack when filling buffer.");
         return -1;
       }
       // Are we at the end?
-      ESP_LOGV(OtaHelperLog::TAG, "Read %s bytes from socket, total_read: %d, total_bytes_left: %d",
-               bytes_filled.c_str(), total_read, total_bytes_left);
+      log(ESP_LOG_VERBOSE, "Read " + bytes_filled + " bytes from socket, total_read: " + std::to_string(total_read) +
+                               ", total_bytes_left: " + std::to_string(total_bytes_left));
       if (total_read >= total_bytes_left) {
         return total_read;
       }
@@ -789,7 +784,7 @@ bool OtaHelper::writeStreamToPartition(
     std::function<int(char *buffer, size_t buffer_size, size_t total_bytes_left)> fill_buffer) {
   char *buffer = (char *)malloc(SPI_FLASH_SEC_SIZE);
   if (buffer == nullptr) {
-    ESP_LOGE(OtaHelperLog::TAG, "Failed to allocate buffer of size %d", SPI_FLASH_SEC_SIZE);
+    log(ESP_LOG_ERROR, "Failed to allocate buffer of size " + std::to_string(SPI_FLASH_SEC_SIZE));
     return false;
   }
 
@@ -802,19 +797,19 @@ bool OtaHelper::writeStreamToPartition(
   while (bytes_read < content_length) {
     int bytes_filled = fill_buffer(buffer, SPI_FLASH_SEC_SIZE, content_length - bytes_read);
     if (bytes_filled < 0) {
-      ESP_LOGE(OtaHelperLog::TAG, "Unable to fill buffer");
+      log(ESP_LOG_ERROR, "Unable to fill buffer");
       free(buffer);
       return false;
     }
 
-    ESP_LOGV(OtaHelperLog::TAG, "Filled buffer with: %d", bytes_filled);
+    log(ESP_LOG_VERBOSE, "Filled buffer with: " + std::to_string(bytes_filled));
 
     // Special start case
     // Check start if contains the magic byte.
     uint8_t skip = 0;
     if (bytes_read == 0 && flash_mode == FlashMode::FIRMWARE) {
       if (buffer[0] != ESP_IMAGE_HEADER_MAGIC) {
-        ESP_LOGE(OtaHelperLog::TAG, "Start of firwmare does not contain magic byte");
+        log(ESP_LOG_ERROR, "Start of firwmare does not contain magic byte");
         free(buffer);
         return false;
       }
@@ -828,7 +823,7 @@ bool OtaHelper::writeStreamToPartition(
 
     // Normal case - write buffer
     if (!writeBufferToPartition(partition, bytes_read, buffer, bytes_filled, skip)) {
-      ESP_LOGE(OtaHelperLog::TAG, "Failed to write buffer to partition");
+      log(ESP_LOG_ERROR, "Failed to write buffer to partition");
       free(buffer);
       return false;
     }
@@ -838,16 +833,16 @@ bool OtaHelper::writeStreamToPartition(
 
     // If this is the end, finish up.
     if (bytes_read == content_length) {
-      ESP_LOGI(OtaHelperLog::TAG, "End of stream, writing data to partition");
+      log(ESP_LOG_INFO, "End of stream, writing data to partition");
 
       if (!md5hash.empty()) {
         md5.calculate();
         if (md5hash != md5.toString()) {
-          ESP_LOGE(OtaHelperLog::TAG, "MD5 checksum verification failed.");
+          log(ESP_LOG_ERROR, "MD5 checksum verification failed.");
           free(buffer);
           return false;
         } else {
-          ESP_LOGI(OtaHelperLog::TAG, "MD5 checksum correct.");
+          log(ESP_LOG_INFO, "MD5 checksum correct.");
         }
       }
 
@@ -949,14 +944,14 @@ const esp_partition_t *OtaHelper::findPartition(FlashMode flash_mode) {
   if (flash_mode == FlashMode::FIRMWARE) {
     const esp_partition_t *partition = esp_ota_get_next_update_partition(NULL);
     if (partition == nullptr) {
-      ESP_LOGE(OtaHelperLog::TAG, "No firmware OTA partition found");
+      log(ESP_LOG_ERROR, "No firmware OTA partition found");
     }
     return partition;
   } else if (flash_mode == FlashMode::SPIFFS) {
     const esp_partition_t *partition =
         esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, NULL);
     if (partition == nullptr) {
-      ESP_LOGE(OtaHelperLog::TAG, "No SPIIFS partition found");
+      log(ESP_LOG_ERROR, "No SPIIFS partition found");
     }
     return partition;
   }
@@ -995,7 +990,7 @@ void OtaHelper::reportStatus(OtaStatus status) {
 
 bool OtaHelper::reportOnError(esp_err_t err, const char *msg) {
   if (err != ESP_OK) {
-    ESP_LOGE(OtaHelperLog::TAG, "%s: %s", msg, esp_err_to_name(err));
+    log(ESP_LOG_ERROR, std::string(msg) + ": " + std::string(esp_err_to_name(err)));
     return false;
   }
   return true;
@@ -1017,4 +1012,14 @@ std::string OtaHelper::trim(const std::string &str) {
   auto first = std::find_if_not(str.begin(), str.end(), [](int c) { return std::isspace(c); });
   auto last = std::find_if_not(str.rbegin(), str.rend(), [](int c) { return std::isspace(c); }).base();
   return (first == last ? std::string() : std::string(first, last));
+}
+
+void OtaHelper::log(const esp_log_level_t log_level, std::string message) {
+  if (_on_log.size() > 0) {
+    for (auto &on_log : _on_log) {
+      on_log(message, log_level);
+    }
+  } else {
+    LogHelper::log(OtaHelperLog::TAG, log_level, message);
+  }
 }

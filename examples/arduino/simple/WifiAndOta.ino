@@ -22,6 +22,15 @@ WiFiHelper _wifi_helper(hostname);
 void setup() {
   Serial.begin(115200);
 
+  // Add logging callbacks when using Arduino framework. When using ESP-IDF, use set_log_level() instead. See
+  // constructor and addOnLog().
+  _ota_helper.addOnLog([](const std::string message, const esp_log_level_t log_level) {
+    Serial.println("OtaHelper: " + String(message.c_str())); // ignoring log_level, logs everything. Noisy.
+  });
+  _wifi_helper.addOnLog([](const std::string message, const esp_log_level_t log_level) {
+    Serial.println("WifiHelper: " + String(message.c_str())); // ignoring log_level, logs everything. Noisy.
+  });
+
   bool initialize_nvs = true;
   bool timeout_ms = 10000;
   auto connected = _wifi_helper.connectToAp(wifi_ssid, wifi_password, initialize_nvs, timeout_ms);
