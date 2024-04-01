@@ -40,8 +40,8 @@ public:
   /**
    * @brief Connect to AP.
    *
-   * Note that NVS must have been setup before calling this function. Either your application does this, or you can pass
-   * true to initializeNVS to do it automatically.
+   * Note that NVS must have been setup before calling this function. Either your application does this, or you can set
+   * initializeNVS to do it automatically.
    *
    * @param ssid the SSID to connect to.
    * @param password the password to use.

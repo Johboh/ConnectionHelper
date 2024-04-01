@@ -9,7 +9,6 @@ endif()
 idf_component_register(COMPONENT_NAME "ConnectionHelper"
                         SRCS ${lib_sources}
                         INCLUDE_DIRS "./includes/" "./espidf/"
-                        EMBED_FILES "./espidf/html/ota.html"
                         REQUIRES ${required_components})
 
 if(IDF_VERSION_MAJOR LESS 5) # 5+ compiles with c++23.

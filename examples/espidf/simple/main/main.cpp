@@ -44,7 +44,9 @@ void app_main(void) {
   xTaskCreate(blinkAndSerialTask, "blinkAndSerialTask", 2048, NULL, 15, NULL);
 
   // Connect to WIFI with 10s timeout.
-  auto connected = _wifi_helper.connectToAp(wifi_ssid, wifi_password, true, 10000);
+  bool initialize_nvs = true;
+  bool timeout_ms = 10000;
+  auto connected = _wifi_helper.connectToAp(wifi_ssid, wifi_password, hostname, initialize_nvs, timeout_ms);
   if (connected) {
     // Connected to WIFI, start OTA.
     if (!_ota_helper.start()) {

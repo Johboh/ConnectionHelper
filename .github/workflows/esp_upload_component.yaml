@@ -12,8 +12,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4.1.1
 
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
       - name: Remove unused examples and sources and arduino
-        run: rm -rf arduino examples/arduino library.json library.properties
+        run: rm -rf examples/arduino library.json library.properties
+
+      - name: Re generate html
+        run: python binary_to_h.py html/ota.html src/ota_html.h
 
       - name: Upload component to component registry
         uses: espressif/upload-components-ci-action/@v1

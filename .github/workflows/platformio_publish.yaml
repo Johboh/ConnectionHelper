@@ -10,11 +10,16 @@ jobs:
     needs: [build_examples_for_verification]
     steps:
       - uses: actions/checkout@v3
+
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.12'
+
       - name: Install PlatformIO Core
         run: pip install --upgrade platformio
+
+      - name: Re generate html
+        run: python binary_to_h.py html/ota.html src/ota_html.h
 
       - name: Publish PlatformIO library
         run: pio pkg publish --owner johboh --no-notify --no-interactive

@@ -21,8 +21,13 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v2
+
+      - uses: actions/setup-python@v4
         with:
-          submodules: 'recursive'
+          python-version: '3.12'
+
+      - name: Re generate html
+        run: python binary_to_h.py html/ota.html src/ota_html.h
 
       - name: ESP-IDF Build
         uses: espressif/esp-idf-ci-action@v1

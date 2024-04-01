@@ -1,5 +1,6 @@
 #include "OtaHelper.h"
 #include "MD5Builder.h"
+#include "ota_html.h"
 #include <esp_app_format.h>
 #include <esp_log.h>
 #include <esp_ota_ops.h>
@@ -193,12 +194,9 @@ esp_err_t OtaHelper::httpGetHandler(httpd_req_t *req) {
 
   httpd_resp_set_status(req, HTTPD_200);
   httpd_resp_set_hdr(req, "Connection", "keep-alive");
-  extern const unsigned char html_start[] asm("_binary_ota_html_start");
-  extern const unsigned char html_end[] asm("_binary_ota_html_end");
-  const size_t html_size = (html_end - html_start);
 
   std::string html;
-  html.assign((char *)html_start, html_size);
+  html.assign(ota_html, sizeof(ota_html));
   _this->replaceAll(html, "$id", _this->_configuration.web_ota.id);
 
   httpd_resp_send(req, html.c_str(), HTTPD_RESP_USE_STRLEN);

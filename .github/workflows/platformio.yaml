@@ -16,13 +16,18 @@ jobs:
             ~/.cache/pip
             ~/.platformio/.cache
           key: ${{ runner.os }}-pio
+
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.12'
+
       - name: Install PlatformIO Core
         run: pip install --upgrade platformio
 
+      - name: Re generate html
+        run: python binary_to_h.py html/ota.html src/ota_html.h
+
       - name: Build PlatformIO examples
-        run: pio ci --lib="." --board=lolin_s2_mini --board=lolin_c3_mini --board="d1_mini"
+        run: pio ci --lib="." --board=lolin_s2_mini --board=lolin_c3_mini
         env:
           PLATFORMIO_CI_SRC: examples/arduino/${{ matrix.example.name }}
