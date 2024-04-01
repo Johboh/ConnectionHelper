@@ -27,5 +27,9 @@
         "files": ["main.cpp"]
       }
     ],
+    "bulid": [
+        "unflags=-std=gnu++11",
+        "flags=-std=gnu++17"
+    ],
     "dependencies": []
   }
