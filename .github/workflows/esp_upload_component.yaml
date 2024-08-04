@@ -23,7 +23,7 @@ jobs:
         run: python binary_to_h.py html/ota.html src/impl/ota_html.h
 
       - name: Upload component to component registry
-        uses: espressif/upload-components-ci-action/@v1.0.2
+        uses: espressif/upload-components-ci-action/@v1
         with:
           name: "ConnectionHelper"
           namespace: "johboh"
