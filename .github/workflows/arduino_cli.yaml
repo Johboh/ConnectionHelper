@@ -29,4 +29,4 @@ jobs:
           ln -s "$PWD" "$HOME/Arduino/libraries/."
 
       - name: Compile Sketch
-        run: arduino-cli compile --fqbn esp32:esp32:esp32c3 examples/arduino/${{ matrix.example.name }}
+        run: arduino-cli compile --fqbn esp32:esp32:esp32 examples/arduino/${{ matrix.example.name }}
