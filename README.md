@@ -18,7 +18,7 @@ Arduino (using Arduino IDE or PlatformIO) and ESP-IDF (using Espressif IoT Devel
 #### PlatformIO (Arduino or ESP-IDF):
 Add the following to `libs_deps` for __ESP32__:
 ```
-   Johboh/ConnectionHelper@^3.0.2
+   Johboh/ConnectionHelper@^3.0.3
 ```
 For __ESP8266__, use the legacy 2.x version:
 ```
@@ -26,13 +26,15 @@ For __ESP8266__, use the legacy 2.x version:
 ```
 
 #### Arduino IDE:
-Search for `ConnectionHelper` by `johboh` in the library manager. See note about version above. Note: Need ESP32 core v3.0.2 until [this issue](https://github.com/espressif/arduino-esp32/issues/10084) has been fixed. If you get issues with `undefined reference to `lwip_hook_ip6_input'`, try a different ESP32 core version. Need at least 3+ for C++17 support.
+Search for `ConnectionHelper` by `johboh` in the library manager. See note about version above.
+
+__Note__: Need ESP32 core v3.0.3 until [this issue](https://github.com/espressif/arduino-esp32/issues/10084) has been fixed. If you get issues with `undefined reference to `lwip_hook_ip6_input'`, try a different ESP32 core version. Need at least 3+ for C++17 support.
 #### Espressif IoT Development Framework:
 In your existing `idf_component.yml` or in a new `idf_component.yml` next to your main component:
 ```
 dependencies:
   johboh/ConnectionHelper:
-    version: ">=3.0.2"
+    version: ">=3.0.3"
 ```
 
 ### Example
