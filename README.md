@@ -25,6 +25,9 @@ For __ESP8266__, use the legacy 2.x version:
    Johboh/ConnectionHelper@^2.0.5
 ```
 
+#### Arduino IDE:
+Search for `ConnectionHelper` by `johboh` in the library manager. See note about version above.
+
 #### Espressif IoT Development Framework:
 In your existing `idf_component.yml` or in a new `idf_component.yml` next to your main component:
 ```
@@ -34,7 +37,7 @@ dependencies:
 ```
 
 ### Example
-- [Arduino framework](examples/arduino/simple/WifiAndOta.ino)
+- [Arduino framework](examples/arduino/simple/simple.ino)
 - [ESP-IDF framework](examples/espidf/simple/main/main.cpp)
 
 ### Parition table

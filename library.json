@@ -17,12 +17,12 @@
     "platforms": ["espressif32"],
     "examples": [
       {
-          "name": "Arduino simple",
+          "name": "Arduino",
           "base": "examples/arduino/simple",
-          "files": ["WifiAndOta.ino"]
+          "files": ["simple.ino"]
       },
       {
-        "name": "ESP-IDF simple",
+        "name": "ESP-IDF",
         "base": "examples/espidf/simple/main",
         "files": ["main.cpp"]
       }
