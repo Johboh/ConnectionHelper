@@ -1,5 +1,5 @@
 dependencies:
   johboh/ConnectionHelper:
-    #version: ">=3.0.1"
+    #version: ">=3.0.2"
     # Remove path and enable version to use ConnectionHelper from repository
     path: ../../../../
