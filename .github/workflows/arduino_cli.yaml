@@ -23,5 +23,10 @@ jobs:
           arduino-cli core update-index
           arduino-cli core install esp32:esp32
 
+      - name: Install repo as library
+        run: |
+          mkdir -p "$HOME/Arduino/libraries"
+          ln -s "$PWD" "$HOME/Arduino/libraries/."
+
       - name: Compile Sketch
-        run: arduino-cli compile --fqbn esp32:esp32:esp32c3 --libraries ./ examples/arduino/${{ matrix.example.name }}
+        run: arduino-cli compile --fqbn esp32:esp32:esp32c3 examples/arduino/${{ matrix.example.name }}
