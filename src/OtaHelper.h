@@ -16,6 +16,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string>
+#include <vector>
 
 namespace OtaHelperLog {
 const char TAG[] = "OtaHelper";

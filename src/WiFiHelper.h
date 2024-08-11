@@ -8,6 +8,7 @@
 #include <freertos/event_groups.h>
 #include <functional>
 #include <string>
+#include <vector>
 
 #define TIMEOUT_CONNECT_MS 5000
 
