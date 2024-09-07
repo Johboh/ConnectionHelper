@@ -55,7 +55,7 @@ void app_main(void) {
 
   // Connect to WIFI with 10s timeout.
   bool initialize_nvs = true;
-  bool timeout_ms = 10000;
+  int timeout_ms = 10000;
   auto connected = _wifi_helper.connectToAp(wifi_ssid, wifi_password, initialize_nvs, timeout_ms);
   if (connected) {
     // Connected to WIFI, start OTA.
