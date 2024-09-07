@@ -67,6 +67,8 @@ bool WiFiHelper::connectToAp(const char *ssid, const char *password, bool initia
     }
   }
 
+  xEventGroupClearBits(_wifi_event_group, WIFI_CONNECTED_BIT);
+
   if (!reportOnError(esp_netif_init(), "failed to initialize netif")) {
     return false;
   }
@@ -119,7 +121,7 @@ bool WiFiHelper::connectToAp(const char *ssid, const char *password, bool initia
 
   /* xEventGroupWaitBits() returns the bits before the call returned, hence we can test which event actually
    * happened. */
-  if (bits & WIFI_CONNECTED_BIT) {
+  if ((bits & WIFI_CONNECTED_BIT) != 0) {
     log(ESP_LOG_INFO, "connected to AP with SSID: " + std::string(ssid));
     return true;
   } else {
