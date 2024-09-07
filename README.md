@@ -34,7 +34,7 @@ __Note__: Need ESP32 core v3.0.3 until [this issue](https://github.com/espressif
 In your existing `idf_component.yml` or in a new `idf_component.yml` next to your main component:
 ```
 dependencies:
-  johboh/ConnectionHelper:
+  johboh/connectionhelper:
     version: ">=3.0.3"
 ```
 
