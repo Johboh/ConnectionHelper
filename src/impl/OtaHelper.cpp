@@ -1012,8 +1012,14 @@ void OtaHelper::replaceAll(std::string &s, const std::string &search, const std:
 }
 
 std::string OtaHelper::trim(const std::string &str) {
+// Not optimal, need to figure out the ::ranges situation.
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 4, 0)
   auto first = std::ranges::find_if_not(str.begin(), str.end(), [](int c) { return std::isspace(c); });
   auto last = std::ranges::find_if_not(str.rbegin(), str.rend(), [](int c) { return std::isspace(c); }).base();
+#else
+  auto first = std::find_if_not(str.begin(), str.end(), [](int c) { return std::isspace(c); });
+  auto last = std::find_if_not(str.rbegin(), str.rend(), [](int c) { return std::isspace(c); }).base();
+#endif
   return (first == last ? std::string() : std::string(first, last));
 }
 
