@@ -9,6 +9,9 @@
 #include <esp_tls_crypto.h>
 #include <lwip/sockets.h>
 #include <lwip/sys.h>
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 4, 0)
+#include <esp_flash_spi_init.h>
+#endif
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 1, 0)
 #include <spi_flash_mmap.h>
 #endif
@@ -1009,8 +1012,8 @@ void OtaHelper::replaceAll(std::string &s, const std::string &search, const std:
 }
 
 std::string OtaHelper::trim(const std::string &str) {
-  auto first = std::find_if_not(str.begin(), str.end(), [](int c) { return std::isspace(c); });
-  auto last = std::find_if_not(str.rbegin(), str.rend(), [](int c) { return std::isspace(c); }).base();
+  auto first = std::ranges::find_if_not(str.begin(), str.end(), [](int c) { return std::isspace(c); });
+  auto last = std::ranges::find_if_not(str.rbegin(), str.rend(), [](int c) { return std::isspace(c); }).base();
   return (first == last ? std::string() : std::string(first, last));
 }
 

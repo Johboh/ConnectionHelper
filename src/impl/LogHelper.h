@@ -24,6 +24,7 @@ static inline void log(const char *tag, const esp_log_level_t log_level, std::st
   case ESP_LOG_DEBUG:
     ESP_LOGD(tag, "%s", message.c_str());
     break;
+  case ESP_LOG_MAX:  // Fallthrough
   case ESP_LOG_NONE: // ¯\_(ツ)_/¯
     break;
   }
