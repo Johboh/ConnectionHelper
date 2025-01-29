@@ -23,6 +23,8 @@
 #include <esp_system.h>
 #include <string>
 
+namespace ConnectionHelperUtils {
+
 class MD5Builder {
 public:
   void begin();
@@ -36,5 +38,7 @@ private:
   md5_context_t _ctx;
   uint8_t _buf[ESP_ROM_MD5_DIGEST_LEN];
 };
+
+} // namespace ConnectionHelperUtils
 
 #endif // __MD5_BUILDER__

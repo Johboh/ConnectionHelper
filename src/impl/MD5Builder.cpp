@@ -19,6 +19,8 @@
 #include "MD5Builder.h"
 #include <cstring>
 
+namespace ConnectionHelperUtils {
+
 void MD5Builder::begin() {
   std::memset(_buf, 0x00, ESP_ROM_MD5_DIGEST_LEN);
   esp_rom_md5_init(&_ctx);
@@ -41,3 +43,5 @@ std::string MD5Builder::toString() {
   getChars(out);
   return std::string(out);
 }
+
+} // namespace ConnectionHelperUtils

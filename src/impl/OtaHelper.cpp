@@ -519,7 +519,7 @@ void OtaHelper::arduinoOtaUdpServerTask(void *pvParameters) {
           // Need auth?
           if (!_this->_configuration.arduino_ota.password.empty()) {
             // Generate nounce.
-            MD5Builder nonce_md5;
+            ConnectionHelperUtils::MD5Builder nonce_md5;
             nonce_md5.begin();
             nonce_md5.add(std::to_string(esp_timer_get_time()));
             nonce_md5.calculate();
@@ -539,13 +539,13 @@ void OtaHelper::arduinoOtaUdpServerTask(void *pvParameters) {
           }
 
           // Verify authentication
-          MD5Builder passwordmd5;
+          ConnectionHelperUtils::MD5Builder passwordmd5;
           passwordmd5.begin();
           passwordmd5.add(_this->_configuration.arduino_ota.password);
           passwordmd5.calculate();
           auto challenge = passwordmd5.toString() + ":" + auth_nonce + ":" + auth_packet->cnonce;
 
-          MD5Builder challengemd5;
+          ConnectionHelperUtils::MD5Builder challengemd5;
           challengemd5.begin();
           challengemd5.add(challenge);
           challengemd5.calculate();
@@ -793,7 +793,7 @@ bool OtaHelper::writeStreamToPartition(
 
   uint8_t skip_buffer[ENCRYPTED_BLOCK_SIZE];
 
-  MD5Builder md5;
+  ConnectionHelperUtils::MD5Builder md5;
   md5.begin();
 
   int bytes_read = 0;
