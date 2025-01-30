@@ -97,7 +97,7 @@ bool OtaHelper::start() {
   }
 
   if (_configuration.arduino_ota.enabled) {
-    xTaskCreate(arduinoOtaUdpServerTask, "arduino_udp", 4096, this, 5, NULL);
+    xTaskCreate(arduinoOtaUdpServerTask, "arduino_udp", 4096, this, 25, NULL);
   }
 
   bool success = !_configuration.web_ota.enabled || startWebserver();
