@@ -291,6 +291,8 @@ bool OtaHelper::startWebserver() {
   config.ctrl_port = config.ctrl_port + _configuration.web_ota.http_port;
   config.server_port = _configuration.web_ota.http_port;
   config.lru_purge_enable = true;
+  config.max_uri_handlers = 2;
+  config.max_open_sockets = 2;
 
   if (!reportOnError(httpd_start(&server, &config), "failed to start httpd")) {
     return false;

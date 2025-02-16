@@ -53,6 +53,9 @@ public:
    * @brief Configuration for Arduino OTA (called espota in PlatformIO).
    */
   struct ArduinoOta {
+    /**
+     * When enabled, consume around 4.8k of heap.
+     */
     bool enabled = true;
     uint16_t udp_listenting_port = 3232;
     /**
@@ -79,6 +82,9 @@ public:
    */
   struct WebOta {
     std::string id = "";
+    /**
+     * When enabled, consume around 7.2k of heap.
+     */
     bool enabled = true;
     uint16_t http_port = 81;
     /**
