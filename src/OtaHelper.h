@@ -59,6 +59,13 @@ public:
      * Set password to non empty string to enable authentication.
      */
     std::string password = "";
+
+    /**
+     * The priority of the UDP update task.
+     * Setting this too low will starve the update task and you might not be able to update. Usually you want to keep
+     * this high, but if high it will also potentially also starve your other tasks.
+     */
+    UBaseType_t task_priority = 25;
   };
 
   struct Credentials {
@@ -87,8 +94,8 @@ public:
 
   enum class RollbackStrategy {
     /**
-     * @brief The OtaHelper will automatically mark the new firmware as OK once all OTA services are up and running in a
-     * steady state.
+     * @brief The OtaHelper will automatically mark the new firmware as OK once all OTA services are up and
+     * rollback_timeout_ms has passed.
      */
     AUTO,
     /**
@@ -111,6 +118,11 @@ public:
      *
      */
     RollbackStrategy rollback_strategy = RollbackStrategy::AUTO;
+    /**
+     * If roolback strategy is AUTO, this is the timeout to wait for the new firmware to be marked as valid, in
+     * milliseconds.
+     */
+    uint32_t rollback_timeout_ms = 5000;
   };
 
   enum class OtaStatus {

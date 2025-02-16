@@ -21,6 +21,7 @@
 #define UDP_CMD_WRITE_SPIFFS 100
 #define UDP_CMD_AUTH 200
 #define ESPOTA_SUCCESSFUL "OK"
+#define ARDUINO_OTA_TASK_STACK_SIZE 4096
 
 // Web OTA/HTTP local OTA specific
 #define AUTHORIZATION_HDR_KEY "Authorization"
@@ -63,12 +64,15 @@ bool OtaHelper::start() {
 
   log(ESP_LOG_INFO, "Starting OtaHelper with the following configuration");
   log(ESP_LOG_INFO, "  - Rollback Strategy: " +
-                        std::string(_configuration.rollback_strategy == RollbackStrategy::AUTO ? "AUTO" : "MANUAL"));
+                        std::string(_configuration.rollback_strategy == RollbackStrategy::AUTO ? "auto" : "manual"));
+  if (_configuration.rollback_strategy == RollbackStrategy::AUTO) {
+    log(ESP_LOG_INFO, "  - Rollback Timeout: " + std::to_string(_configuration.rollback_timeout_ms) + "ms");
+  }
 
-  log(ESP_LOG_INFO, "  - Web UI: " + std::string(_configuration.web_ota.enabled ? "enabled" : "disabled"));
+  log(ESP_LOG_INFO, "  - Web UI/OTA: " + std::string(_configuration.web_ota.enabled ? "enabled" : "disabled"));
   if (_configuration.web_ota.enabled) {
-    log(ESP_LOG_INFO, "    - http port : " + std::to_string(_configuration.web_ota.http_port));
-    log(ESP_LOG_INFO, "    - id : " + _configuration.web_ota.id);
+    log(ESP_LOG_INFO, "    - http port: " + std::to_string(_configuration.web_ota.http_port));
+    log(ESP_LOG_INFO, "    - id: " + _configuration.web_ota.id);
     auto username = _configuration.web_ota.credentials.username;
     if (!username.empty()) {
       log(ESP_LOG_INFO, "    - username: " + _configuration.web_ota.credentials.username);
@@ -78,11 +82,12 @@ bool OtaHelper::start() {
 
   log(ESP_LOG_INFO, "  - Arduino OTA: " + std::string(_configuration.arduino_ota.enabled ? "enabled" : "disabled"));
   if (_configuration.arduino_ota.enabled) {
-    log(ESP_LOG_INFO, "    - udp listenting port : " + std::to_string(_configuration.arduino_ota.udp_listenting_port));
+    log(ESP_LOG_INFO, "    - UDP listenting port: " + std::to_string(_configuration.arduino_ota.udp_listenting_port));
     auto password = _configuration.arduino_ota.password;
     if (!password.empty()) {
       log(ESP_LOG_INFO, "    - auth: enabled");
     }
+    log(ESP_LOG_INFO, "    - UDP task priority: " + std::to_string(_configuration.arduino_ota.task_priority));
 
     _rollback_bits_to_wait_for += ARDUINO_OTA_STARTED_BIT;
   }
@@ -92,6 +97,8 @@ bool OtaHelper::start() {
   if (_configuration.rollback_strategy == RollbackStrategy::AUTO) {
     auto can_rollback = esp_ota_check_rollback_is_possible();
     if (can_rollback) {
+      log(ESP_LOG_INFO,
+          "Starting rollback task with timeout " + std::to_string(_configuration.rollback_timeout_ms) + "ms");
       xTaskCreate(rollbackWatcherTask, "rollback", ROLLBACK_TASK_STACK_SIZE, this, ROLLBACK_TASK_PRIORITY, NULL);
     } else {
       log(ESP_LOG_INFO, "Not starting rollback watcher as there is no other app to rollback to or "
@@ -100,7 +107,8 @@ bool OtaHelper::start() {
   }
 
   if (_configuration.arduino_ota.enabled) {
-    xTaskCreate(arduinoOtaUdpServerTask, "arduino_udp", 4096, this, 25, NULL);
+    xTaskCreate(arduinoOtaUdpServerTask, "arduino_udp", ARDUINO_OTA_TASK_STACK_SIZE, this,
+                _configuration.arduino_ota.task_priority, NULL);
   }
 
   bool success = !_configuration.web_ota.enabled || startWebserver();
@@ -971,8 +979,8 @@ const esp_partition_t *OtaHelper::findPartition(FlashMode flash_mode) {
 void OtaHelper::rollbackWatcherTask(void *pvParameters) {
   OtaHelper *_this = (OtaHelper *)pvParameters;
 
-  // Wait just slightly to give things time.
-  vTaskDelay(5000 / portTICK_PERIOD_MS);
+  // Wait for rollback_timeout_ms until confirming.
+  vTaskDelay(_this->_configuration.rollback_timeout_ms / portTICK_PERIOD_MS);
 
   auto wait_bits = _this->_rollback_bits_to_wait_for;
   if (wait_bits > 0) {
