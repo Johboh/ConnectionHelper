@@ -40,6 +40,8 @@
 // Rollback related
 #define ARDUINO_OTA_STARTED_BIT BIT0
 #define WEB_OTA_STARTED_BIT BIT1
+#define ROLLBACK_TASK_STACK_SIZE 2048
+#define ROLLBACK_TASK_PRIORITY 5
 
 // #########################################################################
 // Public API
@@ -90,7 +92,7 @@ bool OtaHelper::start() {
   if (_configuration.rollback_strategy == RollbackStrategy::AUTO) {
     auto can_rollback = esp_ota_check_rollback_is_possible();
     if (can_rollback) {
-      xTaskCreate(rollbackWatcherTask, "rollback", 4096, this, 5, NULL);
+      xTaskCreate(rollbackWatcherTask, "rollback", ROLLBACK_TASK_STACK_SIZE, this, ROLLBACK_TASK_PRIORITY, NULL);
     } else {
       log(ESP_LOG_INFO, "Not starting rollback watcher as there is no other app to rollback to or "
                         "CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE is not enabled in sdkconfig.");
