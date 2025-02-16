@@ -38,7 +38,7 @@
 #define SPI_FLASH_BLOCK_SIZE (SPI_SECTORS_PER_BLOCK * SPI_FLASH_SEC_SIZE)
 
 // Rollback related
-#define ARDINO_OTA_STARTED_BIT BIT0
+#define ARDUINO_OTA_STARTED_BIT BIT0
 #define WEB_OTA_STARTED_BIT BIT1
 
 // #########################################################################
@@ -82,7 +82,7 @@ bool OtaHelper::start() {
       log(ESP_LOG_INFO, "    - auth: enabled");
     }
 
-    _rollback_bits_to_wait_for += ARDINO_OTA_STARTED_BIT;
+    _rollback_bits_to_wait_for += ARDUINO_OTA_STARTED_BIT;
   }
 
   log(ESP_LOG_INFO, "  - Remote URI download: enabled (always)");
@@ -489,7 +489,7 @@ void OtaHelper::arduinoOtaUdpServerTask(void *pvParameters) {
       break;
     }
     _this->log(ESP_LOG_INFO, "UDP socket bound, port " + std::to_string(port));
-    xEventGroupSetBits(_this->_rollback_event_group, ARDINO_OTA_STARTED_BIT);
+    xEventGroupSetBits(_this->_rollback_event_group, ARDUINO_OTA_STARTED_BIT);
 
     struct sockaddr_storage source_addr;
     socklen_t socklen = sizeof(source_addr);
