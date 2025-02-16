@@ -77,7 +77,7 @@ public:
   };
 
   /**
-   * @brief Configuration for HTTP web interface.
+   * @brief Configuration for HTTP web interface/OTA.
    *
    */
   struct WebOta {
@@ -86,7 +86,17 @@ public:
      * When enabled, consume around 7.2k of heap.
      */
     bool enabled = true;
+    /**
+     * The port number to listen on.
+     */
     uint16_t http_port = 81;
+
+    /**
+     * If set to true, will show a UI for uploading firmware and spiffs at the given host and port.
+     * If false, no UI is shown but uploading using curl is still possible (see class documentation):
+     */
+    bool ui_enabled = true;
+
     /**
      * Set username to non empty string to enable authentication.
      * Note: Only Basic authentication is supported.

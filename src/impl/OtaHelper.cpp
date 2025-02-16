@@ -291,7 +291,7 @@ bool OtaHelper::startWebserver() {
   config.ctrl_port = config.ctrl_port + _configuration.web_ota.http_port;
   config.server_port = _configuration.web_ota.http_port;
   config.lru_purge_enable = true;
-  config.max_uri_handlers = 2;
+  config.max_uri_handlers = _configuration.web_ota.ui_enabled ? 2 : 1;
   config.max_open_sockets = 2;
 
   if (!reportOnError(httpd_start(&server, &config), "failed to start httpd")) {
@@ -308,14 +308,16 @@ bool OtaHelper::startWebserver() {
     return false;
   }
 
-  httpd_uri_t ota_root = {
-      .uri = "/",
-      .method = HTTP_GET,
-      .handler = httpGetHandler,
-      .user_ctx = this,
-  };
-  if (!reportOnError(httpd_register_uri_handler(server, &ota_root), "failed to register uri handler for OTA root")) {
-    return false;
+  if (_configuration.web_ota.ui_enabled) {
+    httpd_uri_t ota_root = {
+        .uri = "/",
+        .method = HTTP_GET,
+        .handler = httpGetHandler,
+        .user_ctx = this,
+    };
+    if (!reportOnError(httpd_register_uri_handler(server, &ota_root), "failed to register uri handler for OTA root")) {
+      return false;
+    }
   }
 
   xEventGroupSetBits(_rollback_event_group, WEB_OTA_STARTED_BIT);
