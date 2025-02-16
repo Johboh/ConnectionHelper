@@ -92,7 +92,8 @@ bool OtaHelper::start() {
     if (can_rollback) {
       xTaskCreate(rollbackWatcherTask, "rollback", 4096, this, 5, NULL);
     } else {
-      log(ESP_LOG_INFO, "Not starting rollback watcher (either this is the only app, or other error)");
+      log(ESP_LOG_INFO, "Not starting rollback watcher as there is no other app to rollback to or "
+                        "CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE is not enabled in sdkconfig.");
     }
   }
 
