@@ -68,7 +68,7 @@ public:
      * Setting this too low will starve the update task and you might not be able to update. Usually you want to keep
      * this high, but if high it will also potentially also starve your other tasks.
      */
-    UBaseType_t task_priority = 25;
+    UBaseType_t task_priority = (configMAX_PRIORITIES - 1);
   };
 
   struct Credentials {
