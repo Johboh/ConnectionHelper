@@ -361,7 +361,7 @@ esp_err_t OtaHelper::httpEventHandler(esp_http_client_event_t *evt) {
   case HTTP_EVENT_HEADER_SENT:
     _this->log(ESP_LOG_VERBOSE, "HTTP_EVENT_HEADER_SENT");
     break;
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 1, 0)
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
   case HTTP_EVENT_REDIRECT:
     _this->log(ESP_LOG_VERBOSE, "HTTP_EVENT_REDIRECT");
     break;
