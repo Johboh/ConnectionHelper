@@ -1,7 +1,7 @@
 # ConnectionHelper
 [![PlatformIO CI](https://github.com/Johboh/ConnectionHelper/actions/workflows/platformio.yaml/badge.svg)](https://registry.platformio.org/libraries/johboh/ConnectionHelper)
-[![ESP-IDF](https://github.com/Johboh/ConnectionHelper/actions/workflows/espidf.yaml/badge.svg)](https://github.com/Johboh/ConnectionHelper/actions/workflows/espidf.yaml)
-[![Arduino IDE](https://github.com/Johboh/ConnectionHelper/actions/workflows/arduino_cli.yaml/badge.svg)](https://github.com/Johboh/ConnectionHelper/actions/workflows/arduino_cli.yaml)
+[![ESP-IDF](https://github.com/Johboh/ConnectionHelper/actions/workflows/espidf.yaml/badge.svg)](https://components.espressif.com/components/johboh/connectionhelper/)
+[![Arduino IDE](https://github.com/Johboh/ConnectionHelper/actions/workflows/arduino_cli.yaml/badge.svg)](https://downloads.arduino.cc/libraries/logs/github.com/Johboh/ConnectionHelper/)
 [![GitHub release](https://img.shields.io/github/release/Johboh/ConnectionHelper.svg)](https://github.com/Johboh/ConnectionHelper/releases)
 [![Clang-format](https://github.com/Johboh/ConnectionHelper/actions/workflows/clang-format.yaml/badge.svg)](https://github.com/Johboh/ConnectionHelper)
 
