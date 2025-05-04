@@ -17,7 +17,7 @@ Arduino (using Arduino IDE or PlatformIO) and ESP-IDF (using Espressif IoT Devel
 
 ### Installation
 #### PlatformIO (Arduino or ESP-IDF):
-Add the following to `libs_deps` for __ESP32__:
+Add the following to `lib_deps` for __ESP32__:
 ```
    Johboh/ConnectionHelper@^3.0.11
 ```
