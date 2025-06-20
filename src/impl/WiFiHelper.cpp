@@ -173,12 +173,12 @@ bool WiFiHelper::reportOnError(esp_err_t err, const char *msg) {
   return true;
 }
 
-void WiFiHelper::log(const esp_log_level_t log_level, std::string message) {
-  if (_on_log.size() > 0) {
-    for (auto &on_log : _on_log) {
+void WiFiHelper::log(const esp_log_level_t log_level, const std::string &message) {
+  if (!_on_log.empty()) {
+    for (const auto &on_log : _on_log) {
       on_log(message, log_level);
     }
   } else {
-    LogHelper::log(WiFiHelperLog::TAG, log_level, message);
+    LogHelper::log(WiFiHelperLog::TAG, log_level, message.c_str());
   }
 }

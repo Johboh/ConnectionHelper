@@ -77,7 +77,7 @@ public:
    * @param message the log message to log.
    * @param log_level the severity of the log.
    */
-  using OnLog = std::function<void(const std::string message, const esp_log_level_t log_level)>;
+  using OnLog = std::function<void(const std::string &message, const esp_log_level_t log_level)>;
 
   /**
    * @brief Register log callback. Normally you can use esp_log_level_set(WiFiHelperLog::TAG,
@@ -92,7 +92,7 @@ private:
 
 private:
   static void eventHandler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
-  void log(const esp_log_level_t log_level, std::string message);
+  void log(const esp_log_level_t log_level, const std::string &message);
 
 private:
   const char *_device_hostname;

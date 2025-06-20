@@ -7,22 +7,22 @@
 #include <esp_log.h>
 
 namespace LogHelper {
-static inline void log(const char *tag, const esp_log_level_t log_level, std::string &message) {
+static inline void log(const char *tag, const esp_log_level_t log_level, const char *message) {
   switch (log_level) {
   case ESP_LOG_ERROR:
-    ESP_LOGE(tag, "%s", message.c_str());
+    ESP_LOGE(tag, "%s", message);
     break;
   case ESP_LOG_WARN:
-    ESP_LOGW(tag, "%s", message.c_str());
+    ESP_LOGW(tag, "%s", message);
     break;
   case ESP_LOG_INFO:
-    ESP_LOGI(tag, "%s", message.c_str());
+    ESP_LOGI(tag, "%s", message);
     break;
   case ESP_LOG_VERBOSE:
-    ESP_LOGV(tag, "%s", message.c_str());
+    ESP_LOGV(tag, "%s", message);
     break;
   case ESP_LOG_DEBUG:
-    ESP_LOGD(tag, "%s", message.c_str());
+    ESP_LOGD(tag, "%s", message);
     break;
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 4, 0)
   case ESP_LOG_MAX: // Fallthrough

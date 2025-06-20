@@ -202,7 +202,7 @@ public:
    * @param message the log message to log.
    * @param log_level the severity of the log.
    */
-  using OnLog = std::function<void(const std::string message, const esp_log_level_t log_level)>;
+  using OnLog = std::function<void(const std::string &message, const esp_log_level_t log_level)>;
 
   /**
    * @brief Register log callback. Normally you can use esp_log_level_set(OtaHelperLog::TAG,
@@ -272,7 +272,7 @@ private: // Generic utils
   bool reportOnError(esp_err_t err, const char *msg);
   void replaceAll(std::string &s, const std::string &search, const std::string &replace);
   std::string trim(const std::string &str);
-  void log(const esp_log_level_t log_level, std::string message);
+  void log(const esp_log_level_t log_level, const std::string &message);
 
 private:
   std::vector<OnLog> _on_log;
