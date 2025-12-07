@@ -387,8 +387,6 @@ esp_err_t OtaHelper::httpEventHandler(esp_http_client_event_t *evt) {
 bool OtaHelper::downloadAndWriteToPartition(const esp_partition_t *partition, FlashMode flash_mode, std::string &url,
                                             std::string &md5hash) {
 
-  char *buffer = (char *)malloc(SPI_FLASH_SEC_SIZE);
-
   esp_http_client_config_t config = {};
   config.url = url.c_str();
   config.user_data = this;
@@ -440,9 +438,6 @@ bool OtaHelper::downloadAndWriteToPartition(const esp_partition_t *partition, Fl
   esp_http_client_close(client);
   esp_http_client_cleanup(client);
 
-  if (buffer != nullptr) {
-    free(buffer);
-  }
   return success;
 }
 
