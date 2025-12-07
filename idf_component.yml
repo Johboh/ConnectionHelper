@@ -1,4 +1,4 @@
-version: "3.0.12"
+version: "3.0.13"
 description: Library for setting up WiFi and OTA (Over The Air)
 url: https://github.com/Johboh/ConnectionHelper
 dependencies:

@@ -19,7 +19,7 @@ Arduino (using Arduino IDE or PlatformIO) and ESP-IDF (using Espressif IoT Devel
 #### PlatformIO (Arduino or ESP-IDF):
 Add the following to `lib_deps` for __ESP32__:
 ```
-   Johboh/ConnectionHelper@^3.0.12
+   Johboh/ConnectionHelper@^3.0.13
 ```
 For __ESP8266__, use the legacy 2.x version:
 ```
@@ -35,7 +35,7 @@ In your existing `idf_component.yml` or in a new `idf_component.yml` next to you
 ```
 dependencies:
   johboh/connectionhelper:
-    version: ">=3.0.12"
+    version: ">=3.0.13"
 ```
 
 ### Example
