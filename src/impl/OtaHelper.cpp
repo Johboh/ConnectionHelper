@@ -366,6 +366,14 @@ esp_err_t OtaHelper::httpEventHandler(esp_http_client_event_t *evt) {
     _this->log(ESP_LOG_VERBOSE, "HTTP_EVENT_REDIRECT");
     break;
 #endif
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(6, 0, 0)
+  case HTTP_EVENT_ON_HEADERS_COMPLETE:
+    _this->log(ESP_LOG_VERBOSE, "HTTP_EVENT_ON_HEADERS_COMPLETE");
+    break;
+  case HTTP_EVENT_ON_STATUS_CODE:
+    _this->log(ESP_LOG_VERBOSE, "HTTP_EVENT_ON_STATUS_CODE");
+    break;
+#endif
   case HTTP_EVENT_ON_HEADER:
     _this->log(ESP_LOG_VERBOSE, "HTTP_EVENT_ON_HEADER, key=" + std::string(evt->header_key) +
                                     ", value=" + std::string(evt->header_value));
