@@ -33,6 +33,8 @@ public:
        characters long.  Valid characters for hostnames are ASCII(7)
        letters from a to z, the digits from 0 to 9, and the hyphen (-).
        A hostname may not start with a hyphen."
+       However! ESP-IDF limits this to 32 bytes in total. Any hostname longer than that will be clamped to first 32
+   bytes.
    * @param on_connected optional callback on connect.
    * @param on_disconnected optional callback on disconnect.
    */

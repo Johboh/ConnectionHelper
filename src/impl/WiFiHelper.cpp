@@ -54,7 +54,15 @@ void WiFiHelper::eventHandler(void *arg, esp_event_base_t event_base, int32_t ev
 
 WiFiHelper::WiFiHelper(const char *device_hostname, std::function<void(void)> on_connected,
                        std::function<void(void)> on_disconnected)
-    : _device_hostname(device_hostname), _on_connected(on_connected), _on_disconnected(on_disconnected) {
+    : _device_hostname(), _on_connected(on_connected), _on_disconnected(on_disconnected) {
+  // ESP-IDF limit hostname to 32 bytes max
+  if (device_hostname != nullptr) {
+    size_t len = std::strlen(device_hostname);
+    if (len > 32) {
+      len = 32;
+    }
+    _device_hostname.assign(device_hostname, len);
+  }
   _wifi_event_group = xEventGroupCreate();
 }
 
