@@ -55,13 +55,13 @@ void WiFiHelper::eventHandler(void *arg, esp_event_base_t event_base, int32_t ev
 WiFiHelper::WiFiHelper(const char *device_hostname, std::function<void(void)> on_connected,
                        std::function<void(void)> on_disconnected)
     : _device_hostname(), _on_connected(on_connected), _on_disconnected(on_disconnected) {
-  // ESP-IDF limit hostname to 32 bytes max
+  // ESP-IDF limits hostname to 32 bytes max
   if (device_hostname != nullptr) {
-    size_t len = std::strlen(device_hostname);
-    if (len > 32) {
-      len = 32;
+    std::string hostname(device_hostname);
+    if (hostname.size() > 32) {
+      hostname.resize(32);
     }
-    _device_hostname.assign(device_hostname, len);
+    _device_hostname = std::move(hostname);
   }
   _wifi_event_group = xEventGroupCreate();
 }
@@ -86,7 +86,7 @@ bool WiFiHelper::connectToAp(const char *ssid, const char *password, bool initia
 
   _netif_sta = esp_netif_create_default_wifi_sta();
 
-  if (!reportOnError(esp_netif_set_hostname(_netif_sta, _device_hostname), "failed to set hostname")) {
+  if (!reportOnError(esp_netif_set_hostname(_netif_sta, _device_hostname.c_str()), "failed to set hostname")) {
     return false;
   }
 

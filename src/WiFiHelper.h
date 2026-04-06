@@ -97,7 +97,7 @@ private:
   void log(const esp_log_level_t log_level, const std::string &message);
 
 private:
-  const char *_device_hostname;
+  std::string _device_hostname;
 
 private:
   bool _reconnect;
