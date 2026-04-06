@@ -88,6 +88,11 @@ public:
    */
   void addOnLog(OnLog on_log) { _on_log.push_back(on_log); }
 
+  /**
+   * Return actual hostname in use.
+   */
+  std::string &hostname() { return _device_hostname; }
+
 private:
   bool initializeNVS();
   bool reportOnError(esp_err_t err, const char *msg);

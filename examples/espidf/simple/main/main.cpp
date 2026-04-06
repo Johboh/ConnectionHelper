@@ -7,7 +7,7 @@
 
 // For this example only.
 // Suggest to not store credentials in version controlled files.
-const char hostname[] = "my-hostname";
+const char hostname[] = "my-hostname-which-is-a-very-long-one-and-will-be-clamped-to-first-thirty-two-bytes";
 const char wifi_ssid[] = "my-ssid";
 const char wifi_password[] = "my-password";
 
@@ -65,6 +65,8 @@ void app_main(void) {
   } else {
     ESP_LOGE(LOG_TAG, "Failed to connect");
   }
+
+  ESP_LOGI(LOG_TAG, "Using hostname %s", _wifi_helper.hostname().c_str());
 
   // Run forever.
   while (1) {
