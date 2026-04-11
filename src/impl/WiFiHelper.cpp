@@ -152,6 +152,20 @@ void WiFiHelper::disconnect() {
   esp_wifi_deinit();
 }
 
+std::optional<int8_t> WiFiHelper::rssi() {
+  if (!_is_connected) {
+    return std::nullopt;
+  }
+
+  int rssi_value;
+  esp_err_t err = esp_wifi_sta_get_rssi(&rssi_value);
+  if (err != ESP_OK) {
+    log(ESP_LOG_WARN, "Failed to get RSSI: " + std::string(esp_err_to_name(err)));
+    return std::nullopt;
+  }
+  return static_cast<int8_t>(rssi_value);
+}
+
 bool WiFiHelper::initializeNVS() {
   log(ESP_LOG_INFO, "Initializing NVS");
   // Initialize NVS

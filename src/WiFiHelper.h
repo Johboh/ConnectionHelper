@@ -7,6 +7,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/event_groups.h>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -92,6 +93,13 @@ public:
    * Return actual hostname in use.
    */
   std::string &hostname() { return _device_hostname; }
+
+  /**
+   * Get the RSSI value. Only present if connected to an AP.
+   *
+   * @return value between -100 and 10
+   */
+  std::optional<int8_t> rssi();
 
 private:
   bool initializeNVS();
