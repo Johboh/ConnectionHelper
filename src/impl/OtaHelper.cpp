@@ -97,9 +97,12 @@ bool OtaHelper::start() {
   if (_configuration.rollback_strategy == RollbackStrategy::AUTO) {
     auto can_rollback = esp_ota_check_rollback_is_possible();
     if (can_rollback) {
-      log(ESP_LOG_INFO,
-          "Starting rollback task with timeout " + std::to_string(_configuration.rollback_timeout_ms) + "ms");
-      xTaskCreate(rollbackWatcherTask, "rollback", ROLLBACK_TASK_STACK_SIZE, this, ROLLBACK_TASK_PRIORITY, NULL);
+      if (_rollback_task_handle == nullptr) {
+        log(ESP_LOG_INFO,
+            "Starting rollback task with timeout " + std::to_string(_configuration.rollback_timeout_ms) + "ms");
+        xTaskCreate(rollbackWatcherTask, "rollback", ROLLBACK_TASK_STACK_SIZE, this, ROLLBACK_TASK_PRIORITY,
+                    &_rollback_task_handle);
+      }
     } else {
       log(ESP_LOG_INFO, "Not starting rollback watcher as there is no other app to rollback to or "
                         "CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE is not enabled in sdkconfig.");
@@ -107,8 +110,12 @@ bool OtaHelper::start() {
   }
 
   if (_configuration.arduino_ota.enabled) {
-    xTaskCreate(arduinoOtaUdpServerTask, "arduino_udp", ARDUINO_OTA_TASK_STACK_SIZE, this,
-                _configuration.arduino_ota.task_priority, NULL);
+    if (_arduino_ota_task_handle == nullptr) {
+      xTaskCreate(arduinoOtaUdpServerTask, "arduino_udp", ARDUINO_OTA_TASK_STACK_SIZE, this,
+                  _configuration.arduino_ota.task_priority, &_arduino_ota_task_handle);
+    } else {
+      xEventGroupSetBits(_rollback_event_group, ARDUINO_OTA_STARTED_BIT);
+    }
   }
 
   bool success = !_configuration.web_ota.enabled || startWebserver();
@@ -167,8 +174,14 @@ bool OtaHelper::handleAuthentication(httpd_req_t *req) {
   size_t authorization_len = httpd_req_get_hdr_value_len(req, AUTHORIZATION_HDR_KEY) + 1;
   if (authorization_len > 1) {
     char *authorization = (char *)malloc(authorization_len);
+    if (authorization == nullptr) {
+      log(ESP_LOG_ERROR, "Failed to allocate memory for authorization header");
+      setNotAuthenticatedResonse(req);
+      return false;
+    }
     esp_err_t err = httpd_req_get_hdr_value_str(req, AUTHORIZATION_HDR_KEY, authorization, authorization_len);
     if (err != ESP_OK) {
+      free(authorization);
       log(ESP_LOG_ERROR, "Unable to get authorization header: " + std::string(esp_err_to_name(err)));
       setNotAuthenticatedResonse(req);
       return false;
@@ -183,8 +196,10 @@ bool OtaHelper::handleAuthentication(httpd_req_t *req) {
     esp_crypto_base64_encode((unsigned char *)buff, crypto_buffer_size, &crypto_buffer_size,
                              (const unsigned char *)user_info.c_str(), user_info.length());
     std::string expected_authorization = "Basic " + std::string(buff);
+    std::string actual_authorization(authorization);
+    free(authorization);
 
-    if (expected_authorization != std::string(authorization)) {
+    if (expected_authorization != actual_authorization) {
       log(ESP_LOG_WARN, "Credentials does not match");
       setNotAuthenticatedResonse(req);
       return false;
@@ -285,6 +300,11 @@ esp_err_t OtaHelper::httpPostHandler(httpd_req_t *req) {
 }
 
 bool OtaHelper::startWebserver() {
+  if (_http_server != nullptr) {
+    xEventGroupSetBits(_rollback_event_group, WEB_OTA_STARTED_BIT);
+    return true;
+  }
+
   httpd_handle_t server = NULL;
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   // Must use unique unique internal UDP port in case of several HTTP servers on this host. OK to wrap.
@@ -305,6 +325,7 @@ bool OtaHelper::startWebserver() {
       .user_ctx = this,
   };
   if (!reportOnError(httpd_register_uri_handler(server, &ota_post), "failed to register uri handler for OTA post")) {
+    httpd_stop(server);
     return false;
   }
 
@@ -316,10 +337,12 @@ bool OtaHelper::startWebserver() {
         .user_ctx = this,
     };
     if (!reportOnError(httpd_register_uri_handler(server, &ota_root), "failed to register uri handler for OTA root")) {
+      httpd_stop(server);
       return false;
     }
   }
 
+  _http_server = server;
   xEventGroupSetBits(_rollback_event_group, WEB_OTA_STARTED_BIT);
   return true;
 }
@@ -497,14 +520,20 @@ void OtaHelper::arduinoOtaUdpServerTask(void *pvParameters) {
     int sock = socket(AF_INET, SOCK_DGRAM, ip_protocol);
     if (sock < 0) {
       _this->log(ESP_LOG_ERROR, "Unable to create UDP socket: errno " + std::to_string(errno));
-      break;
+      vTaskDelay(2000 / portTICK_PERIOD_MS);
+      continue;
     }
     _this->log(ESP_LOG_INFO, "UDP socket created");
+
+    int reuse = 1;
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
 
     int err = bind(sock, (struct sockaddr *)&dest_addr_ip4, sizeof(dest_addr_ip4));
     if (err < 0) {
       _this->log(ESP_LOG_ERROR, "UDP socket unable to bind: errno " + std::to_string(errno));
-      break;
+      close(sock);
+      vTaskDelay(2000 / portTICK_PERIOD_MS);
+      continue;
     }
     _this->log(ESP_LOG_INFO, "UDP socket bound, port " + std::to_string(port));
     xEventGroupSetBits(_this->_rollback_event_group, ARDUINO_OTA_STARTED_BIT);
@@ -513,15 +542,27 @@ void OtaHelper::arduinoOtaUdpServerTask(void *pvParameters) {
     socklen_t socklen = sizeof(source_addr);
 
     while (1) {
+      struct timeval udp_timeout = {};
+      udp_timeout.tv_sec = waiting_for_auth ? (HTTP_REMOTE_TIMEOUT_MS / 1000) : 0;
+      udp_timeout.tv_usec = 0;
+      setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &udp_timeout, sizeof(udp_timeout));
+
       _this->log(ESP_LOG_INFO, "waiting UDP packet...");
+      socklen = sizeof(source_addr);
       int len = recvfrom(sock, rx_buffer, sizeof(rx_buffer) - 1, 0, (struct sockaddr *)&source_addr, &socklen);
       _this->log(ESP_LOG_VERBOSE, "Got UDP packet with length " + std::to_string(len));
 
       // Error occurred during receiving?
       if (len < 0) {
+        if (waiting_for_auth && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+          _this->log(ESP_LOG_WARN, "UDP auth packet timed out, resetting handshake state");
+          waiting_for_auth = false;
+          continue;
+        }
         _this->log(ESP_LOG_ERROR, "UDP recvfrom failed: errno " + std::to_string(errno));
         break;
       } else {
+        rx_buffer[len] = '\0';
         std::string reply_string;
 
         // Parse packets conditionally.
@@ -610,8 +651,10 @@ void OtaHelper::arduinoOtaUdpServerTask(void *pvParameters) {
       _this->log(ESP_LOG_ERROR, "Shutting down UDP and restarting socket...");
       shutdown(sock, 0);
       close(sock);
+      vTaskDelay(500 / portTICK_PERIOD_MS);
     }
   }
+  _this->_arduino_ota_task_handle = nullptr;
   vTaskDelete(NULL);
 }
 
@@ -731,6 +774,13 @@ bool OtaHelper::connectToHostForArduino(ArduinoOtaHandshake &update, char *host_
     log(ESP_LOG_ERROR, "Unable to create TCP client socket: errno " + std::to_string(errno));
     return false;
   }
+
+  struct timeval timeout = {};
+  timeout.tv_sec = HTTP_REMOTE_TIMEOUT_MS / 1000;
+  timeout.tv_usec = (HTTP_REMOTE_TIMEOUT_MS % 1000) * 1000;
+  setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+  setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+
   log(ESP_LOG_INFO,
       "TCP client socket created, connecting to " + std::string(host_ip) + ":" + std::to_string(update.host_port));
 
@@ -760,6 +810,8 @@ bool OtaHelper::connectToHostForArduino(ArduinoOtaHandshake &update, char *host_
   if (err < 0) {
     log(ESP_LOG_ERROR, "Failed to ack TCP update, its fine.");
   }
+  shutdown(sock, 0);
+  close(sock);
   return true;
 }
 
@@ -817,7 +869,7 @@ bool OtaHelper::writeStreamToPartition(
   int bytes_read = 0;
   while (bytes_read < content_length) {
     int bytes_filled = fill_buffer(buffer, SPI_FLASH_SEC_SIZE, content_length - bytes_read);
-    if (bytes_filled < 0) {
+    if (bytes_filled <= 0) {
       log(ESP_LOG_ERROR, "Unable to fill buffer");
       free(buffer);
       return false;
@@ -996,6 +1048,7 @@ void OtaHelper::rollbackWatcherTask(void *pvParameters) {
   // We got all bits, or no bits to wait for. Canceling rollback.
   _this->cancelRollback();
 
+  _this->_rollback_task_handle = nullptr;
   vTaskDelete(NULL);
 }
 

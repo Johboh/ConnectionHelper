@@ -10,6 +10,7 @@
 #include <esp_partition.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/event_groups.h>
+#include <freertos/task.h>
 #include <functional>
 #include <inttypes.h>
 #include <optional>
@@ -278,9 +279,12 @@ private:
   std::vector<OnLog> _on_log;
   Configuration _configuration;
   CrtBundleAttach _crt_bundle_attach;
-  uint8_t _rollback_bits_to_wait_for;
-  EventGroupHandle_t _rollback_event_group;
+  uint8_t _rollback_bits_to_wait_for = 0;
+  EventGroupHandle_t _rollback_event_group = nullptr;
   OtaStatusCallback _ota_status_callback;
+  httpd_handle_t _http_server = nullptr;
+  TaskHandle_t _arduino_ota_task_handle = nullptr;
+  TaskHandle_t _rollback_task_handle = nullptr;
 };
 
 #endif // __OTA_HELPER_H__

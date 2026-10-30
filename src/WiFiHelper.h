@@ -1,11 +1,13 @@
 #ifndef __WIFI_HELPER_H__
 #define __WIFI_HELPER_H__
 
+#include <atomic>
 #include <esp_event.h>
 #include <esp_log.h>
 #include <esp_netif.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/event_groups.h>
+#include <freertos/task.h>
 #include <functional>
 #include <optional>
 #include <string>
@@ -41,6 +43,7 @@ public:
    */
   WiFiHelper(const char *device_hostname, std::function<void(void)> on_connected = {},
              std::function<void(void)> on_disconnected = {});
+  ~WiFiHelper();
 
 public:
   /**
@@ -72,7 +75,7 @@ public:
   /**
    * @brief return if connected to AP.
    */
-  bool isConnected() { return _is_connected; }
+  bool isConnected() { return _is_connected.load(); }
 
   /**
    * @brief Callback when this object want to log something.
@@ -104,21 +107,45 @@ public:
 private:
   bool initializeNVS();
   bool reportOnError(esp_err_t err, const char *msg);
+  void startMonitorTask();
+  void stopMonitorTask();
+  bool pingGateway();
+  uint32_t millis() const;
 
 private:
+  static void connectionMonitorTask(void *pvParameters);
   static void eventHandler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
   void log(const esp_log_level_t log_level, const std::string &message);
 
 private:
   std::string _device_hostname;
+  std::string _ssid;
+  std::string _password;
 
 private:
-  bool _reconnect;
-  bool _is_connected;
-  esp_ip4_addr_t _ip_addr;
-  esp_netif_t *_netif_sta;
+  std::atomic<bool> _reconnect{false};
+  std::atomic<bool> _is_connected{false};
+  std::atomic<bool> _is_l2_connected{false};
+  std::atomic<bool> _connect_in_progress{false};
+  std::atomic<bool> _gateway_responds_to_ping{false};
+  std::atomic<bool> _initial_gw_probe_done{false};
+  bool _wifi_initialized = false;
+  std::atomic<uint32_t> _consecutive_failures{0};
+  std::atomic<uint32_t> _consecutive_gw_failures{0};
+  std::atomic<uint32_t> _last_connect_attempt_ms{0};
+  std::atomic<uint32_t> _last_disconnect_ms{0};
+  std::atomic<uint32_t> _l2_connected_time_ms{0};
+  std::atomic<uint32_t> _last_gateway_check_ms{0};
+  uint16_t _ping_seqno = 0;
+  esp_ip4_addr_t _ip_addr = {};
+  esp_ip4_addr_t _gw_addr = {};
+  esp_netif_t *_netif_sta = nullptr;
+  esp_event_handler_instance_t _instance_any_id = nullptr;
+  esp_event_handler_instance_t _instance_got_ip = nullptr;
+  esp_event_handler_instance_t _instance_lost_ip = nullptr;
+  TaskHandle_t _monitor_task_handle = nullptr;
   std::vector<OnLog> _on_log;
-  EventGroupHandle_t _wifi_event_group;
+  EventGroupHandle_t _wifi_event_group = nullptr;
   std::function<void(void)> _on_connected;
   std::function<void(void)> _on_disconnected;
 };
