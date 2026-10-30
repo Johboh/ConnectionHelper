@@ -2,7 +2,13 @@
 #include "LogHelper.h"
 #include "MD5Builder.h"
 #include "ota_html.h"
+#include <algorithm>
+#include <cctype>
+#include <cerrno>
+#include <cstdlib>
+#include <cstring>
 #include <esp_app_format.h>
+#include <esp_idf_version.h>
 #include <esp_log.h>
 #include <esp_ota_ops.h>
 #include <esp_timer.h>
@@ -11,6 +17,9 @@
 #include <lwip/sys.h>
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 4, 0)
 #include <esp_flash_spi_init.h>
+#if __cplusplus >= 202002L
+#include <ranges>
+#endif
 #endif
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
 #include <spi_flash_mmap.h>
@@ -1084,7 +1093,7 @@ void OtaHelper::replaceAll(std::string &s, const std::string &search, const std:
 
 std::string OtaHelper::trim(const std::string &str) {
 // Not optimal, need to figure out the ::ranges situation.
-#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 4, 0)
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 4, 0) && __cplusplus >= 202002L
   auto first = std::ranges::find_if_not(str.begin(), str.end(), [](int c) { return std::isspace(c); });
   auto last = std::ranges::find_if_not(str.rbegin(), str.rend(), [](int c) { return std::isspace(c); }).base();
 #else

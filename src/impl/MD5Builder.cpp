@@ -17,6 +17,7 @@
   Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 #include "MD5Builder.h"
+#include <cstdio>
 #include <cstring>
 
 namespace ConnectionHelperUtils {
