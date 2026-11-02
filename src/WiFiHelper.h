@@ -1,9 +1,12 @@
 #ifndef __WIFI_HELPER_H__
 #define __WIFI_HELPER_H__
 
+#include <atomic>
+#include <cstdint>
 #include <esp_event.h>
 #include <esp_log.h>
 #include <esp_netif.h>
+#include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/event_groups.h>
 #include <functional>
@@ -41,6 +44,7 @@ public:
    */
   WiFiHelper(const char *device_hostname, std::function<void(void)> on_connected = {},
              std::function<void(void)> on_disconnected = {});
+  ~WiFiHelper();
 
 public:
   /**
@@ -72,7 +76,7 @@ public:
   /**
    * @brief return if connected to AP.
    */
-  bool isConnected() { return _is_connected; }
+  bool isConnected() { return _is_connected.load(); }
 
   /**
    * @brief Callback when this object want to log something.
@@ -107,18 +111,26 @@ private:
 
 private:
   static void eventHandler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data);
+  static void reconnectTimerCallback(void *arg);
   void log(const esp_log_level_t log_level, const std::string &message);
 
 private:
   std::string _device_hostname;
 
 private:
-  bool _reconnect;
-  bool _is_connected;
-  esp_ip4_addr_t _ip_addr;
-  esp_netif_t *_netif_sta;
+  std::atomic<bool> _reconnect{false};
+  std::atomic<bool> _is_connected{false};
+  std::atomic<bool> _l2_connected{false};
+  std::atomic<uint8_t> _retry_count{0};
+  bool _initialized = false;
+  esp_ip4_addr_t _ip_addr = {};
+  esp_netif_t *_netif_sta = nullptr;
+  esp_timer_handle_t _reconnect_timer = nullptr;
+  esp_event_handler_instance_t _instance_any_id = nullptr;
+  esp_event_handler_instance_t _instance_got_ip = nullptr;
+  esp_event_handler_instance_t _instance_lost_ip = nullptr;
   std::vector<OnLog> _on_log;
-  EventGroupHandle_t _wifi_event_group;
+  EventGroupHandle_t _wifi_event_group = nullptr;
   std::function<void(void)> _on_connected;
   std::function<void(void)> _on_disconnected;
 };
