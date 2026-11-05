@@ -1,3 +1,6 @@
+// Copyright (c) Johan Böhlin
+// SPDX-License-Identifier: MIT
+
 #include "OtaHelper.h"
 #include "LogHelper.h"
 #include "MD5Builder.h"

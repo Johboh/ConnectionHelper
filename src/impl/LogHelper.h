@@ -1,3 +1,6 @@
+// Copyright (c) Johan Böhlin
+// SPDX-License-Identifier: MIT
+
 #pragma once
 
 #ifndef __LOG_HELPER_H__

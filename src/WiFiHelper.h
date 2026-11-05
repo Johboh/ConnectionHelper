@@ -1,3 +1,6 @@
+// Copyright (c) Johan Böhlin
+// SPDX-License-Identifier: MIT
+
 #ifndef __WIFI_HELPER_H__
 #define __WIFI_HELPER_H__
 

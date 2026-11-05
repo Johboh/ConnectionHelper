@@ -1,3 +1,6 @@
+// Copyright (c) Johan Böhlin
+// SPDX-License-Identifier: MIT
+
 #include <OtaHelper.h>
 #include <WiFiHelper.h>
 #include <driver/gpio.h>

@@ -1,3 +1,6 @@
+// Copyright (c) Johan Böhlin
+// SPDX-License-Identifier: MIT
+
 #ifndef __OTA_HTML_H__
 #define __OTA_HTML_H__
 

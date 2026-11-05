@@ -64,3 +64,6 @@ Newer version most probably work too, but they have not been verified.
 
 ### Dependencies
 - None
+
+### License
+Licensed under the MIT License
